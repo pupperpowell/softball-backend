@@ -1,0 +1,12 @@
+{
+  "name": "softball-backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "^1.2.22"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  }
+}
