@@ -116,11 +116,13 @@ function printDistributionTable(
   console.log("");
 }
 
+  const MAX_CONTACT = 10;
+
 test("Angle distribution by contact: Launch angle buckets", () => {
   const contactsPerLevel = 20000; // number of CONTACTED balls to collect per contact level
   const rows: { contact: number; counts: number[]; total: number }[] = [];
 
-  for (let contact = 0; contact <= 10; contact++) {
+  for (let contact = 0; contact <= MAX_CONTACT; contact++) {
     const { launch } = collectContactsForLevel(contact, contactsPerLevel, true, 5);
 
     const counts = new Array(launchBuckets.length).fill(0);
@@ -142,7 +144,7 @@ test("Angle distribution by contact: Attack angle buckets", () => {
   const contactsPerLevel = 20000; // number of CONTACTED balls to collect per contact level
   const rows: { contact: number; counts: number[]; total: number }[] = [];
 
-  for (let contact = 0; contact <= 10; contact++) {
+  for (let contact = 0; contact <= MAX_CONTACT; contact++) {
     const { attack } = collectContactsForLevel(contact, contactsPerLevel, true, 5);
 
     const counts = new Array(attackBuckets.length).fill(0);
