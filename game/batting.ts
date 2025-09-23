@@ -3,6 +3,34 @@ import { normal, randomNormal } from "./normalDistribution";
 import type { SwingResult, ThrownPitch } from "./types";
 import type { Player } from "./Player";
 
+// Tunable probability curve parameters for batted-ball angles
+
+// Launch angle ranges and sweet spot
+const LAUNCH_MIN = -135;
+const LAUNCH_MAX = 135;
+const LAUNCH_SWEET_MEAN = 20; // center of sweet spot (8–32°)
+const LAUNCH_SWEET_STDEV_MIN = 8;   // tighter at high skill
+const LAUNCH_SWEET_STDEV_MAX = 35;  // looser at low skill
+const LAUNCH_SWEET_WEIGHT_MIN = 0.20; // weight of sweet-spot mode at skill=0
+const LAUNCH_SWEET_WEIGHT_MAX = 0.70; // weight at skill=10
+// Background randomness for low-skill contact
+const LAUNCH_BACKGROUND_STDEV = 90;
+
+// Attack/horizontal spray angle
+const ATTACK_MIN = -90;
+const ATTACK_MAX = 90;
+const ATTACK_CENTER_MEAN = 0;
+const ATTACK_CENTER_STDEV_MIN = 12; // tighter at high skill
+const ATTACK_CENTER_STDEV_MAX = 35; // looser at low skill
+const ATTACK_CENTER_WEIGHT_MIN = 0.45; // chance ball is fair (in [-45,45]) at skill=0
+const ATTACK_CENTER_WEIGHT_MAX = 0.90; // at skill=10
+const ATTACK_FOUL_MEAN = 75; // around the foul lines
+const ATTACK_FOUL_STDEV = 12;
+
+function clamp(x: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, x));
+}
+
 /**
  * @param contactScore A measure of the batter's skill between 0 and 10
  * @param isStrike 
@@ -58,19 +86,63 @@ export function calculateHit(player: Player, pitch: ThrownPitch): SwingResult {
         contactChance > Math.random() ? contact = true : contact = false;
     }
 
-  // TODO: calculate launch angle
+    /**
+     * At contact score 0, the probability of any possible launch or attack angle is nearly random.
+     * As contact scores rise, the probabilitiy of hitting the "sweet spot" rises.
+     * As contact scores rise, the probability of putting the ball in play rises.
+     */
 
-  // TODO: calculate attack angle (-45 to 45)
+    // Launch angle: mixture of sweet-spot mode and near-random background
+    // Focus scales with batter contact (0..1)
+    const focus = clamp(skill / 10, 0, 1);
 
-  let launch: number = 0; // between 135 and -135, but targeting between 8 and 32 (sweet spot)
-  let attack: number = 0; // beween -90 and 90, but targeting 0 (degrees)
+    const sweetWeight = LAUNCH_SWEET_WEIGHT_MIN + (LAUNCH_SWEET_WEIGHT_MAX - LAUNCH_SWEET_WEIGHT_MIN) * focus;
+    const sweetStdev =
+        LAUNCH_SWEET_STDEV_MAX - (LAUNCH_SWEET_STDEV_MAX - LAUNCH_SWEET_STDEV_MIN) * focus;
 
-  const result: SwingResult = {
-    contact: contact,
-    velo: 0,
-    launch_angle: launch,
-    attack_angle: attack,
-  }
+    let launch: number;
+    if (Math.random() < sweetWeight) {
+        // Skilled hitters concentrate outcomes in the sweet spot with tighter variance
+        launch = normal(LAUNCH_SWEET_MEAN, sweetStdev);
+    } else {
+        // Low skill produces near-random outcomes; blend uniform with a very broad normal
+        const uniform = LAUNCH_MIN + Math.random() * (LAUNCH_MAX - LAUNCH_MIN);
+        const broad = normal(LAUNCH_SWEET_MEAN, LAUNCH_BACKGROUND_STDEV);
+        // Slightly bias toward broad normal with skill, but keep mostly uniform at low skill
+        const t = focus * 0.5; // cap influence so randomness remains
+        launch = uniform * (1 - t) + broad * t;
+    }
+    launch = clamp(launch, LAUNCH_MIN, LAUNCH_MAX);
+
+    // Attack angle (spray): center field is 0°, LF negative, RF positive
+    // Higher contact increases probability of staying fair (within ~±45°) and reduces spread
+    const centerWeight =
+        ATTACK_CENTER_WEIGHT_MIN + (ATTACK_CENTER_WEIGHT_MAX - ATTACK_CENTER_WEIGHT_MIN) * focus;
+    const centerStdev =
+        ATTACK_CENTER_STDEV_MAX - (ATTACK_CENTER_STDEV_MAX - ATTACK_CENTER_STDEV_MIN) * focus;
+
+    let attack: number;
+    if (Math.random() < centerWeight) {
+        // Fair territory tendency with tighter cone at higher skill
+        attack = normal(ATTACK_CENTER_MEAN, centerStdev);
+
+        // Softly encourage in-play bounds [-45, 45] more as skill rises
+        const inPlay = 45;
+        if (attack < -inPlay) attack = -inPlay + (attack + inPlay) * (1 - focus * 0.5);
+        if (attack > inPlay) attack = inPlay + (attack - inPlay) * (1 - focus * 0.5);
+    } else {
+        // Foul tendency: cluster near the lines with some spread, random side
+        const sign = Math.random() < 0.5 ? -1 : 1;
+        attack = sign * normal(ATTACK_FOUL_MEAN, ATTACK_FOUL_STDEV);
+    }
+    attack = clamp(attack, ATTACK_MIN, ATTACK_MAX);
+
+    const result: SwingResult = {
+        contact: contact,
+        velo: 0,
+        launch_angle: launch,
+        attack_angle: attack,
+    }
 
   return result;
 }
@@ -92,4 +164,3 @@ export function calculateExitVelo(power: number): number {
   if (mult > max) mult = max;
   return baseVelo * (1 + mult);
 }
-
