@@ -16,3 +16,7 @@ export function randomNormal(): number {
 export function normal(mean: number, stdev: number): number {
   return mean + randomNormal() * stdev;
 }
+
+export function clamp(x: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, x));
+}

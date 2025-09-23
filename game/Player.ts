@@ -23,9 +23,6 @@ export class Player {
      * toString
      */
     public toString() {
-        console.log(`player ${this.firstname} ${this.lastname} ${this.stats.contact}`);
+        console.log(`player ${this.firstname} ${this.lastname}, contact: ${this.stats.contact}`);
     }
 }
-
-new Player().toString();
-new Player(undefined, "george", "powell").toString();

@@ -1,5 +1,4 @@
-import type { Platform } from "bun";
-import { normal, randomNormal } from "./normalDistribution";
+import { clamp, normal, randomNormal } from "./math";
 import type { SwingResult, ThrownPitch } from "./types";
 import type { Player } from "./Player";
 
@@ -27,9 +26,6 @@ const ATTACK_CENTER_WEIGHT_MAX = 0.90; // at skill=10
 const ATTACK_FOUL_MEAN = 75; // around the foul lines
 const ATTACK_FOUL_STDEV = 12;
 
-function clamp(x: number, min: number, max: number): number {
-  return Math.max(min, Math.min(max, x));
-}
 
 /**
  * @param contactScore A measure of the batter's skill between 0 and 10
