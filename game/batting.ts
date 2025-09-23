@@ -46,9 +46,9 @@ export function calculateHit(player: Player, pitch: ThrownPitch): SwingResult {
     const difficulty = pitch.pitchQuality;
     const skill = player.stats.contact;
 
-    const skillDiff = skill - difficulty; // positive values favor batter, negative values favor pitcher
+    // positive values favor batter, negative values favor pitcher
+    const skillDiff = skill - difficulty; 
 
-    // TODO: calculate contact
     let contact: boolean;
     if (pitch.isStrike) {
         const contactChance = normal(skillDiff + 1, 5);

@@ -16,13 +16,14 @@ function simulateExitVeloStats(power: number, trials = 50000): { avg: number; mi
 
 test("visualize average, min, and max exit velocities by power score", () => {
   const trials = 50000;
+  const MAX_POWER = 10;
 
   const header = "Power   | Avg EV (mph) | Min EV | Max EV";
   console.log(`\nAverage exit velocity by power score (${trials} trials per power)\n`);
   console.log(header);
   console.log("-".repeat(header.length));
 
-  for (let p = 0; p <= 10; p++) {
+  for (let p = 0; p <= MAX_POWER; p++) {
     const stats = simulateExitVeloStats(p, trials);
     const pStr = p.toString().padStart(7, " ");
     const avgStr = stats.avg.toFixed(1).padStart(12, " ");

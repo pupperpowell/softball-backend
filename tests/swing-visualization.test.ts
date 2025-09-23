@@ -11,13 +11,14 @@ function simulateRate(contactScore: number, isStrike: boolean, trials = 50000): 
 
 test("visualize swing rates by contact score for strikes vs balls", () => {
   const trials = 50000;
+  const MAX_CONTACT = 10;
 
   const header = "Contact | Strike% | Ball%";
   console.log(`\nSwing rates by contact score (${trials} trials per condition)\n`);
   console.log(header);
   console.log("-".repeat(header.length));
 
-  for (let cs = 0; cs <= 10; cs++) {
+  for (let cs = 0; cs <= MAX_CONTACT; cs++) {
     const strikeRate = simulateRate(cs, true, trials);
     const ballRate = simulateRate(cs, false, trials);
     const csStr = cs.toString().padStart(7, " ");
