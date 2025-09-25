@@ -1,6 +1,6 @@
 import { clamp, normal, randomNormal } from "./math";
-import type { SwingResult, ThrownPitch } from "./types";
-import type { Player } from "./Player";
+import type { BattedBall, ThrownPitch } from "./types";
+import { Player } from "./Player";
 
 // Tunable probability curve parameters for batted-ball angles
 
@@ -26,7 +26,6 @@ const ATTACK_CENTER_WEIGHT_MAX = 0.90; // at skill=10
 const ATTACK_FOUL_MEAN = 75; // around the foul lines
 const ATTACK_FOUL_STDEV = 12;
 
-
 /**
  * @param contactScore A measure of the batter's skill between 0 and 10
  * @param isStrike 
@@ -45,8 +44,12 @@ export function calculateSwing(contactScore: number, isStrike: boolean): boolean
         p = startingSwingProbability + strikeSwingDelta * contactScore;
     } else {
         // Better hitters chase fewer balls.
-        // every point in contact reduces ball swing %chance by ballSwingDelta
-        p = startingSwingProbability - ballSwingDelta * contactScore;
+        // every point in contact reduces ball swing %chance by ballSwingDelta,
+        // but map contact through an ease-out curve so the reduction is steeper at low levels and flatter at high levels.
+        const u = clamp(contactScore / 10, 0, 1);
+        const eased = 1 - Math.pow(1 - u, 2); // easeOutQuad: fast initial drop, slower tail
+        const effectiveContact = 10 * eased;
+        p = startingSwingProbability - ballSwingDelta * effectiveContact;
     }
 
     // Add a touch of randomness to reflect game variability.
@@ -65,21 +68,27 @@ export function calculateSwing(contactScore: number, isStrike: boolean): boolean
  * @param pitchQuality How difficult the pitch is to hit (between 0 and 10)
  * @returns an object of type ThrownPitch
  */
-export function calculateHit(player: Player, pitch: ThrownPitch): SwingResult {
+export function calculateHit(batter: Player, pitch: ThrownPitch): BattedBall | null {
 
     const difficulty = pitch.pitchQuality;
-    const skill = player.stats.contact;
+    const skill = batter.stats.contact;
 
     // positive values favor batter, negative values favor pitcher
     const skillDiff = skill - difficulty; 
 
     let contact: boolean;
+    let contactChance: number;
+
     if (pitch.isStrike) {
-        const contactChance = normal(skillDiff + 1, 5);
-        contactChance > Math.random() ? contact = true : contact = false;
+        contactChance = normal(skillDiff + 1, 5);
     } else {
-        const contactChance = normal(skillDiff - 2, 5);
-        contactChance > Math.random() ? contact = true : contact = false;
+        contactChance = normal(skillDiff - 2, 5);
+    }
+
+    contact = contactChance > Math.random();
+
+    if (!contact) {
+        return null; // Whiff
     }
 
     /**
@@ -133,11 +142,11 @@ export function calculateHit(player: Player, pitch: ThrownPitch): SwingResult {
     }
     attack = clamp(attack, ATTACK_MIN, ATTACK_MAX);
 
-    const result: SwingResult = {
-        contact: contact,
-        velo: 0,
-        launch_angle: launch,
-        attack_angle: attack,
+    const result: BattedBall = {
+        batter: batter,
+        velo: calculateExitVelo(batter.stats.power),
+        launch: launch,
+        attack: attack,
     }
 
   return result;
@@ -149,7 +158,7 @@ export function calculateHit(player: Player, pitch: ThrownPitch): SwingResult {
  * @returns An off-the-bat exit velocity
  */
 export function calculateExitVelo(power: number): number {
-  const baseVelo = 40 * Math.cbrt(2 * power + 1) - 20;
+  const baseVelo = 40 * Math.cbrt(2 * power + 1) - 10;
   // Weighted randomness: values near 0 are more likely, extremes are rarer.
   // Use a normal(0, 0.1) and clamp to [-0.3, 0.3] to preserve original bounds.
   const min = -0.35;

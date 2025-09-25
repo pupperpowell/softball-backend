@@ -87,11 +87,11 @@ function collectContactsForLevel(
   while (launch.length < contactsTarget && attempts < maxAttempts) {
     attempts++;
     const res = calculateHit(batter, pitch);
-    if (!res.contact) continue;
-    if (typeof res.launch_angle !== "number" || typeof res.attack_angle !== "number") continue;
+    if (!res) continue;
+    if (typeof res.launch !== "number" || typeof res.attack !== "number") continue;
 
-    launch.push(res.launch_angle);
-    attack.push(res.attack_angle);
+    launch.push(res.launch);
+    attack.push(res.attack);
   }
 
   return { launch, attack };

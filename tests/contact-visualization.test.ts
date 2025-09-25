@@ -33,7 +33,7 @@ function simulateContactProbability(skillDiff: number, isStrike: boolean, trials
 
   for (let i = 0; i < trials; i++) {
     const result = calculateHit(batter, pitch);
-    if (result.contact) contactCount++;
+    if (result) contactCount++;
   }
   return contactCount / trials;
 }

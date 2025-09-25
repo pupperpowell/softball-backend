@@ -10,10 +10,11 @@ export type Stats = {
   fielding: number;   // i.e. catching and throwing
   charisma: number;
   growth: number;    // player attitude, or, how quickly their stats improve
+  // strategy?
 };
 
 // Possible fielding positions a player can occupy
-export type Position =
+export type FieldingPosition =
   | "Pitcher"
   | "Catcher"
   | "First Base"
@@ -22,10 +23,12 @@ export type Position =
   | "Shortstop"
   | "Left Field"
   | "Center Field"
-  | "Right Field"
-  | "Designated Hitter"
-  | "Utility"
-  | "Bench";
+  | "Right Field";
+
+/**
+ * other positions/edge cases include
+ * designnated hitter, pinch hitter, pinch runner, relief pitcher, etc.
+ */
 
 export type ThrownPitch = {
   pitcher: Player;
@@ -40,25 +43,11 @@ export type AtBatOutcome =
   | "GROUNDOUT"
   | "FLYOUT";
 
-export type AtBatResult = {
+export type BattedBall = {
   batter: Player;
-  result: AtBatOutcome;
-  // optional score/quality for contact (e.g., used to determine hit distance)
-  hitScore?: number;
-  // when result is IN_PLAY, fielding may produce a FieldOutcome. This is optional
-  // and populated by the fielding simulation.
-  fieldOutcome?: FieldOutcome;
-  // optional batted-ball descriptors
-  hitLocation?: string;
-  hardHit?: boolean;
-  trajectory?: "LINE_DRIVE" | "FLY_BALL";
-};
-
-export type SwingResult = {
-  contact: boolean;
-  velo?: number; // exit velocity
-  launch_angle?: number; // what angle a ball is hit, relative to the ground
-  attack_angle?: number; // what angle a ball is hit, relative to center field (0°)
+  velo: number; // exit velocity
+  attack: number; // attack angle
+  launch: number; // launch angle
 }
 
 export type FieldOutcome =
