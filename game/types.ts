@@ -23,7 +23,8 @@ export type FieldingPosition =
   | "Shortstop"
   | "Left Field"
   | "Center Field"
-  | "Right Field";
+  | "Right Field"
+  | "Bench";
 
 /**
  * other positions/edge cases include
@@ -46,6 +47,8 @@ export type AtBatOutcome =
 export type BattedBall = {
   batter: Player;
   velo: number; // exit velocity
+  foul: boolean;
+  homer: boolean;
   attack: number; // attack angle
   launch: number; // launch angle
 }

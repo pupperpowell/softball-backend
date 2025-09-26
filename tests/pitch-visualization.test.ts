@@ -61,7 +61,7 @@ test("visualize strike/ball rates and strike quality by pitcher skill", () => {
   const MAX_PITCHING = 10;
 
   console.log(`\nPitch outcomes and strike quality by pitcher skill (${trials} trials per skill)\n`);
-  const header = "Pitching | Strike% | Ball% | Avg StrikeQ | Min Quality | Max Quality";
+  const header = "Pitching | Strike% | Ball% | Avg Quality | Min Quality | Max Quality";
   console.log(header);
   console.log("-".repeat(header.length));
 
