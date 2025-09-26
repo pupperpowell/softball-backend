@@ -16,8 +16,8 @@ const LAUNCH_SWEET_WEIGHT_MAX = 0.70; // weight at skill=10
 const LAUNCH_BACKGROUND_STDEV = 90;
 
 // Attack/horizontal spray angle
-const ATTACK_MIN = -90;
-const ATTACK_MAX = 90;
+const ATTACK_MIN = -80;
+const ATTACK_MAX = 80;
 const ATTACK_CENTER_MEAN = 0;
 const ATTACK_CENTER_STDEV_MIN = 12; // tighter at high skill
 const ATTACK_CENTER_STDEV_MAX = 35; // looser at low skill
@@ -142,9 +142,13 @@ export function calculateHit(batter: Player, pitch: ThrownPitch): BattedBall | n
     }
     attack = clamp(attack, ATTACK_MIN, ATTACK_MAX);
 
+    const velo = calculateExitVelo(batter.stats.power);
+
     const result: BattedBall = {
         batter: batter,
-        velo: calculateExitVelo(batter.stats.power),
+        velo: velo,
+        foul: determineFoul(attack, launch),
+        homer: determineHomeRun(velo, launch),
         launch: launch,
         attack: attack,
     }
@@ -158,14 +162,71 @@ export function calculateHit(batter: Player, pitch: ThrownPitch): BattedBall | n
  * @returns An off-the-bat exit velocity
  */
 export function calculateExitVelo(power: number): number {
-  const baseVelo = 40 * Math.cbrt(2 * power + 1) - 10;
+  const baseVelo = 10 * Math.cbrt(2 * power + 1) + 30;
   // Weighted randomness: values near 0 are more likely, extremes are rarer.
   // Use a normal(0, 0.1) and clamp to [-0.3, 0.3] to preserve original bounds.
   const min = -0.35;
   const max = 0.35;
-  const stdev = 0.1;
+  const stdev = 1.0;
   let mult = randomNormal() * stdev;
   if (mult < min) mult = min;
   if (mult > max) mult = max;
   return baseVelo * (1 + mult);
+}
+
+/**
+ * Determine if a batted ball lands foul based on attack (spray) angle
+ * and launch angle.
+ *
+ * Conventions:
+ * - Attack angle: 0° is straight up the middle; LF negative; RF positive.
+ * - Fair territory is approximately within ±45° (bounded by foul lines).
+ * - Launch angle is currently not used to shift the boundary, but is included
+ *   to allow future refinement (e.g., dribblers vs high pop-ups).
+ *
+ * @param attack Horizontal spray angle in degrees (-80..80)
+ * @param launch Vertical launch angle in degrees (-135..135)
+ * @returns true if the ball is foul, false if fair
+ */
+export function determineFoul(attack: number, launch: number): boolean {
+  const FAIR_CONE_DEGREES = 45;
+
+  // If the launch angle is > 90°, the ball goes behind the plate — always foul.
+  if (launch > 90) return true;
+
+  // Strict geometric check against foul lines in front of the plate
+  return Math.abs(attack) > FAIR_CONE_DEGREES;
+}
+
+/**
+ * Determine if a batted ball is a home run based on exit velocity and launch angle.
+ * - Requires a very tight launch window at the low end of "high" exit velocities.
+ * - Gradually widens the acceptable launch window as exit velo increases.
+ *
+ * Assumptions:
+ * - Exit velocity is in mph.
+ * - Optimal HR launch angle is around 27°.
+ */
+export function determineHomeRun(velo: number, launch: number): boolean {
+  // Quick rejects that would never be HR regardless of tolerance
+  if (launch <= 0 || launch > 50) return false;
+
+  // Velocity thresholds for scaling tolerance
+  const HR_VELO_MIN = 60;  // start of "high" exit velo
+  const HR_VELO_MAX = 100; // upper end where tolerance stops widening
+
+  // Launch angle sweet spot and tolerance bounds (in degrees)
+  const OPT_LAUNCH = 27;   // typical HR sweet spot ~25-30°
+  const TOL_MIN = 1.5;     // very precise at low end of high velo
+  const TOL_MAX = 12;      // wider window at upper end of high velo
+
+  // Below the high-velo threshold, no HR
+  if (velo < HR_VELO_MIN) return false;
+
+  // Scale tolerance with velocity using an ease-out curve
+  const u = clamp((velo - HR_VELO_MIN) / (HR_VELO_MAX - HR_VELO_MIN), 0, 1);
+  const eased = 1 - Math.pow(1 - u, 2); // easeOutQuad
+  const tolerance = TOL_MIN + (TOL_MAX - TOL_MIN) * eased;
+
+  return Math.abs(launch - OPT_LAUNCH) <= tolerance;
 }
