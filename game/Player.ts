@@ -1,8 +1,10 @@
-import type { Stats } from "./types";
+import { expect, test } from "bun:test";
+import type { FieldingPosition, Stats } from "./types";
 
 export class Player {
-    firstname: String = "John";
+    firstname: String = Math.random() > 0.5 ? "John" : "Jane";
     lastname: String = "Doe";
+    
     stats: Stats = {
         contact: 0,
         power: 0,
@@ -13,16 +15,28 @@ export class Player {
         growth: 0
     };
 
-    constructor(stats?: Stats, first?: string, last?: string) {
-        first ? this.firstname = first : null;
-        last ? this.lastname = last : null;
-        stats ? this.stats = stats : null;
+    public position: FieldingPosition = "Bench";
+
+    constructor(first?: string, last?: string, stats?: Stats, position?: FieldingPosition) {
+        if (first) this.firstname = first;
+        if (last) this.lastname = last;
+        if (stats) this.stats = stats;
+        if (position) this.position = position;
     }
 
     /**
      * toString
      */
-    public toString() {
-        console.log(`player ${this.firstname} ${this.lastname}, contact: ${this.stats.contact}`);
+    public toString(): string {
+        return `${this.firstname[0]}. ${this.lastname}`;
+    }
+
+    public fullName(): string {
+        return `${this.firstname} ${this.lastname}`;
     }
 }
+
+test("Player toString()", () => {
+    expect(new Player().toString()).toBe("J. Doe")
+    expect(new Player("Johnny", "Carson").fullName()).toBe("Johnny Carson")
+});

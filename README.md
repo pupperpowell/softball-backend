@@ -19,9 +19,7 @@ While we _could_ generate the games all at once, and then feed them to clients p
 
 https://bun.com/docs/api/websockets
 
-## Todo:
-
-- ***
+---
 
 To install dependencies:
 
