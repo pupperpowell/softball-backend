@@ -9,4 +9,5 @@
  * - Run
  * 
  * The reason we have a GameEvent class is to have something uniform to send to clients over the WebSocket.
+ * Maybe we can also use it to 
  */

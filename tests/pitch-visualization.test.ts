@@ -13,7 +13,7 @@ function makePitcher(pitching: number): Player {
     charisma: 0,
     growth: 0,
   };
-  return new Player(stats);
+  return new Player(undefined, undefined, stats);
 }
 
 type Metrics = {

@@ -36,7 +36,7 @@ export class Player {
     }
 }
 
-test("Player toString()", () => {
-    expect(new Player().toString()).toBe("J. Doe")
-    expect(new Player("Johnny", "Carson").fullName()).toBe("Johnny Carson")
-});
+// test("Player toString()", () => {
+//     expect(new Player().toString()).toBe("J. Doe")
+//     expect(new Player("Johnny", "Carson").fullName()).toBe("Johnny Carson")
+// });

@@ -13,7 +13,7 @@ function makePlayer(contact: number): Player {
     charisma: 0,
     growth: 0,
   };
-  return new Player(stats);
+  return new Player(undefined, undefined, stats);
 }
 
 // Use fixed players and construct pitches so that skillDiff = batter.contact - pitch.pitchQuality

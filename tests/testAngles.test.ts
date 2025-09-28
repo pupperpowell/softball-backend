@@ -13,7 +13,7 @@ function makePlayer(contact: number): Player {
     charisma: 0,
     growth: 0,
   };
-  return new Player(stats);
+  return new Player(undefined, undefined, stats);
 }
 
 const pitcher = makePlayer(0);

@@ -62,14 +62,13 @@ export type FieldOutcome =
   | "DOUBLE_PLAY"
   | "TRIPLE_PLAY";
 
-export type FieldResponse = {
-  fielders: Player[];
+export type FieldResponse = { // What does a fielder do when they attempt to field the ball?
+  fielder: Player;
+  hit: boolean; // If the ball is not caught
   error: boolean;
-  hit: boolean;
-  // use a union string type for clarity and type-safety
   result: FieldOutcome;
   // number of bases the batter takes on the play
-  basesTaken?: number;
+  basesTaken?: number; // is this needed?
 };
 
 export interface GameState {

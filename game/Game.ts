@@ -1,7 +1,13 @@
 
 import { NarrationEngine } from "../narrator/NarrationEngine.ts";
-import type { Player } from "./Player";
+import { Player } from "./Player.ts";
+import { simulateAtBat } from "./simulateAtBat.ts";
 import type { Team } from "./Team";
+import {
+  simulateFieldingWithRunners,
+  type RunnersState,
+  type PlayResult,
+} from "./fielding.ts";
 
 // This class contains the state for each game.
 export class Game {
@@ -13,7 +19,7 @@ export class Game {
     isTopHalf = true; // top half: (away team batting), bottom half: (home team batting)
     homeBatterIndex = 0;
     awayBatterIndex = 0;
-    public outs = 0;
+    outs = 0;
     basesOccupied: {
         first?: Player;
         second?: Player;
@@ -81,7 +87,7 @@ export class Game {
             this.basesOccupied.third = this.basesOccupied.second;
             this.basesOccupied.second = this.basesOccupied.first;
             this.basesOccupied.first = undefined;
-            this.addRunner(batter, 1);
+
             this.addRuns(1);
         } else if (this.basesOccupied.first && this.basesOccupied.second) {
             // Advance runners on 1st and 2nd
@@ -101,14 +107,172 @@ export class Game {
         }
 
         // Add batter to first base
-        this.addRunner(batter, 1);
+        this.basesOccupied.first = batter;
         return runsScored;
     }
 
     // Clear all bases (used at end of inning)
     clearBases(): void {
-        console.log(`[BASE RUNNING]: Clearing all bases`);
         this.basesOccupied = {};
     }
-}
 
+    // Apply a resolved play result (from fielding) to game state
+    private applyPlay(play: PlayResult, batter: Player): void {
+        // Add outs and runs from the play
+        this.outs += play.outs;
+        if (play.runs > 0) this.addRuns(play.runs);
+
+        // Snapshot current runners
+        const current = { ...this.basesOccupied };
+
+        // Remove any runners who were retired
+        const outSet = new Set(play.runnersOut ?? []);
+        if (outSet.has("first")) current.first = undefined;
+        if (outSet.has("second")) current.second = undefined;
+        if (outSet.has("third")) current.third = undefined;
+
+        // Helper to move a runner by N bases without re-adding runs (already counted in play.runs)
+        const moveRunner = (runner: Player | undefined, fromBase: 1 | 2 | 3, advance: number) => {
+            if (!runner) return;
+            const dest = fromBase + (advance ?? 0);
+            if (dest >= 4) {
+                // Scored already accounted in play.runs
+                return;
+            }
+            if (dest === 3) this.basesOccupied.third = runner;
+            else if (dest === 2) this.basesOccupied.second = runner;
+            else if (dest === 1) this.basesOccupied.first = runner;
+        };
+
+        // Reset bases; rebuild from runnerAdvances and batter
+        this.basesOccupied = {};
+
+        const adv = play.runnerAdvances ?? {};
+
+        // Process in order: third, second, first to avoid collisions
+        moveRunner(current.third, 3, adv.third ?? 0);
+        moveRunner(current.second, 2, adv.second ?? 0);
+        moveRunner(current.first, 1, adv.first ?? 0);
+
+        // Place batter if he reached safely
+        const batterBases = play.batterBases ?? 0;
+        if (batterBases === 1) this.basesOccupied.first = batter;
+        else if (batterBases === 2) this.basesOccupied.second = batter;
+        else if (batterBases === 3) this.basesOccupied.third = batter;
+        // batterBases === 0 → out; === 4 → HR (runs already counted)
+    }
+
+    simulate() { // should eventually return a BoxScore
+
+        let startingAwayScore = this.awayScore;
+        while (!this.isGameOver) {
+        // Record the starting away score whenever a new top half begins
+        if (this.outs === 0 && this.isTopHalf) {
+            startingAwayScore = this.awayScore;
+        }
+
+        if (this.outs < 3) {
+
+            // get current hitter in the lineup
+            // NOTE: getPlayers() is TODO in Team.ts; keeping call for now.
+            const hitter =
+                ((this.isTopHalf
+                    ? (this.awayTeam as any).getPlayers?.(this.awayBatterIndex % 9)
+                    : (this.homeTeam as any).getPlayers?.(this.homeBatterIndex % 9)) as Player) ?? new Player();
+
+            // Determine pitcher from fielding team roster if available; fallback to a new Player
+            const fieldingTeam = this.isTopHalf ? this.homeTeam : this.awayTeam;
+            const pitcher: Player =
+                ((fieldingTeam as any).players?.find((p: Player) => p.position === "Pitcher")) ??
+                new Player();
+
+            // simulate the at-bat
+            const result = simulateAtBat(hitter, pitcher);
+
+            // Resolve outcome
+            if (result.outcome === "WALK") {
+                this.handleWalk(hitter);
+                if (this.isTopHalf) this.awayBatterIndex++;
+                else this.homeBatterIndex++;
+                continue;
+            }
+
+            if (result.outcome === "STRIKEOUT") {
+                this.outs++;
+                if (this.isTopHalf) this.awayBatterIndex++;
+                else this.homeBatterIndex++;
+                continue;
+            }
+
+            if (result.outcome === "IN_PLAY" && result.battedBall) {
+                // Build runners state from current bases
+                const runners: RunnersState = {
+                    first: this.basesOccupied.first,
+                    second: this.basesOccupied.second,
+                    third: this.basesOccupied.third,
+                    outs: this.outs,
+                };
+
+                // Field the ball with the defensive team
+                const play = simulateFieldingWithRunners(runners, result.battedBall, fieldingTeam);
+
+                // Apply to game state (outs, runs, base advancements, batter placement)
+                this.applyPlay(play, hitter);
+
+                // Next batter
+                if (this.isTopHalf) this.awayBatterIndex++;
+                else this.homeBatterIndex++;
+            }
+
+            // continue to next at-bat while the half-inning hasn't ended
+            continue;
+        }
+
+        // End of half (outs >= 3)
+        // If we've just completed the top of the 9th (or later) and the away team was trailing and failed to score, end the game early.
+        if (
+            this.currentInning >= 9 && this.isTopHalf === true &&
+            this.awayScore < this.homeScore &&
+            this.awayScore === startingAwayScore
+        ) {
+            this.isGameOver = true;
+            this.winner = this.homeTeam;
+            const loser = this.homeScore > this.awayScore
+                ? this.awayTeam
+                : this.homeTeam;
+            const finalScoreString = (this.homeScore > this.awayScore)
+                ? `${this.homeScore}—${this.awayScore}`
+                : `${this.awayScore}—${this.homeScore}`;
+            console.log(
+                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString}`,
+            );
+            break;
+        }
+
+        // If we've just completed the bottom of the 9th (or later) and the score is not tied, the game ends.
+        if (
+            this.currentInning >= 9 && this.isTopHalf === false &&
+            this.homeScore !== this.awayScore
+        ) {
+            this.isGameOver = true;
+            this.winner = this.homeScore > this.awayScore
+                ? this.homeTeam
+                : this.awayTeam;
+            const loser = this.homeScore > this.awayScore
+                ? this.awayTeam
+                : this.homeTeam;
+            const finalScoreString = (this.homeScore > this.awayScore)
+                ? `${this.homeScore}—${this.awayScore}`
+                : `${this.awayScore}—${this.homeScore}`;
+            console.log(
+                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString}`,
+            );
+            break;
+        }
+
+        // Otherwise progress to the next half-inning (this also handles extra innings when tied)
+        // this.isGameOver = true; // for debugging
+        this.nextHalf();
+    }
+    }
+}
