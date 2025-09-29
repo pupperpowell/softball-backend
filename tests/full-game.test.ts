@@ -5,6 +5,8 @@ import { Player } from "../game/Player.ts";
 import type { FieldingPosition } from "../game/types.ts";
 
 function generateRandomPlayer(): Player {
+    const first = Math.floor(Math.random()*1000).toString();
+    const last = Math.floor(Math.random()*1000).toString();
     const stats = {
         contact: Math.floor(Math.random() * 11),
         power: Math.floor(Math.random() * 11),
@@ -14,7 +16,23 @@ function generateRandomPlayer(): Player {
         charisma: Math.floor(Math.random() * 11),
         growth: Math.floor(Math.random() * 11),
     };
-    const player = new Player("Random", "Player", stats);
+    const player = new Player(first, last, stats);
+    return player;
+}
+
+function generateSkilledPlayer(skill: number): Player {
+    const first = Math.floor(Math.random()*1000).toString();
+    const last = Math.floor(Math.random()*1000).toString();
+    const stats = {
+        contact: skill,
+        power: skill,
+        running: skill,
+        pitching: skill,
+        fielding: skill,
+        charisma: skill,
+        growth: skill,
+    };
+    const player = new Player(first, last, stats);
     return player;
 }
 
@@ -28,7 +46,7 @@ function generateTeam(name: string): Team {
         [positions[i]!, positions[j]!] = [positions[j]!, positions[i]!];
     }
     for (let i = 0; i < 9; i++) {
-        const player = generateRandomPlayer();
+        const player = generateSkilledPlayer(3);
         player.position = positions[i]!;
         team.players.push(player);
     }
@@ -36,9 +54,9 @@ function generateTeam(name: string): Team {
 }
 
 test("Simulate a full game with randomly generated players", () => {
-    const homeTeam = generateTeam("Home Team");
-    const awayTeam = generateTeam("Away Team");
-    const game = new Game(homeTeam, awayTeam);
+    const testHomeTeam = generateTeam("Home Team");
+    const testAwayTeam = generateTeam("Away Team");
+    const game = new Game(testHomeTeam, testAwayTeam);
     game.simulate();
     // Assertions
     if (!game.isGameOver) {

@@ -45,11 +45,11 @@ export class Game {
         this.isTopHalf = !this.isTopHalf;
         this.outs = 0;
         this.clearBases();
-        console.log(
-            `[GAME]: it's now the ${(this.isTopHalf
-                ? "top"
-                : "bottom")} of the ${this.currentInning}th inning`,
-        );
+        // console.log(
+        //     `[GAME]: it's now the ${(this.isTopHalf
+        //         ? "top"
+        //         : "bottom")} of the ${this.currentInning}th inning`,
+        // );
     }
 
     // Add runs to the appropriate team's score
@@ -164,6 +164,10 @@ export class Game {
 
     simulate() { // should eventually return a BoxScore
 
+        const debug = false; // Enable/disable debug console.log statements
+
+        if (debug) console.log('[GAME SIMULATE]: Starting game simulation');
+
         let startingAwayScore = this.awayScore;
         while (!this.isGameOver) {
         // Record the starting away score whenever a new top half begins
@@ -172,6 +176,8 @@ export class Game {
         }
 
         if (this.outs < 3) {
+
+            if (debug) console.log(`[GAME SIMULATE]: Inning ${this.currentInning}, ${this.isTopHalf ? 'Top' : 'Bottom'}, Score: ${this.awayScore}-${this.homeScore}, Outs: ${this.outs}, Bases: ${(this.basesOccupied.first ? '1' : '-')}${(this.basesOccupied.second ? '2' : '-')}${(this.basesOccupied.third ? '3' : '-')}`);
 
             // get current hitter in the lineup
             // NOTE: getPlayers() is TODO in Team.ts; keeping call for now.
@@ -186,11 +192,14 @@ export class Game {
                 ((fieldingTeam as any).players?.find((p: Player) => p.position === "Pitcher")) ??
                 new Player();
 
+            if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
+
             // simulate the at-bat
             const result = simulateAtBat(hitter, pitcher);
 
             // Resolve outcome
             if (result.outcome === "WALK") {
+                if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} walked`);
                 this.handleWalk(hitter);
                 if (this.isTopHalf) this.awayBatterIndex++;
                 else this.homeBatterIndex++;
@@ -198,6 +207,7 @@ export class Game {
             }
 
             if (result.outcome === "STRIKEOUT") {
+                if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} struck out`);
                 this.outs++;
                 if (this.isTopHalf) this.awayBatterIndex++;
                 else this.homeBatterIndex++;
@@ -205,6 +215,7 @@ export class Game {
             }
 
             if (result.outcome === "IN_PLAY" && result.battedBall) {
+                if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} hit the ball into play`);
                 // Build runners state from current bases
                 const runners: RunnersState = {
                     first: this.basesOccupied.first,
@@ -244,7 +255,7 @@ export class Game {
                 ? `${this.homeScore}—${this.awayScore}`
                 : `${this.awayScore}—${this.homeScore}`;
             console.log(
-                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString}`,
+                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString} in ${this.currentInning} innings`,
             );
             break;
         }
@@ -265,13 +276,14 @@ export class Game {
                 ? `${this.homeScore}—${this.awayScore}`
                 : `${this.awayScore}—${this.homeScore}`;
             console.log(
-                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString}`,
+                `Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString} in ${this.currentInning} innings`,
             );
             break;
         }
 
         // Otherwise progress to the next half-inning (this also handles extra innings when tied)
         // this.isGameOver = true; // for debugging
+        // this.winner = this.homeTeam;
         this.nextHalf();
     }
     }

@@ -13,6 +13,8 @@ import { Player } from "./Player";
  * - Foul balls are strikes until 2 strikes (cannot strike out on a foul)
  * - Fair batted ball ends the at-bat with IN_PLAY (downstream fielding resolves outcome)
  */
+
+
 export interface AtBatResult {
   outcome: AtBatOutcome;
   balls: number;
@@ -29,10 +31,7 @@ export function simulateAtBat(batter: Player, pitcher: Player): AtBatResult {
   const swings: boolean[] = [];
   let battedBall: BattedBall | undefined;
 
-  // Safety guard to avoid infinite loops in pathological RNG cases
-  const MAX_PITCHES = 30;
-
-  for (let i = 0; i < MAX_PITCHES; i++) {
+  while (balls < 4 && strikes < 3) {
     const pitch = simulatePitch(pitcher);
     pitches.push(pitch);
 

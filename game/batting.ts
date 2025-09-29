@@ -80,9 +80,10 @@ export function calculateHit(batter: Player, pitch: ThrownPitch): BattedBall | n
     let contactChance: number;
 
     if (pitch.isStrike) {
-        contactChance = normal(skillDiff + 1, 5);
+        // contactChance = normal(skillDiff + 1, 5);
+        contactChance = normal(skillDiff + 20, 30);
     } else {
-        contactChance = normal(skillDiff - 2, 5);
+        contactChance = normal(skillDiff + 1, 20);
     }
 
     contact = contactChance > Math.random();
@@ -192,7 +193,7 @@ export function determineFoul(attack: number, launch: number): boolean {
   const FAIR_CONE_DEGREES = 45;
 
   // If the launch angle is > 90°, the ball goes behind the plate — always foul.
-  if (launch > 90) return true;
+  if (launch > 90 || launch < -90) return true;
 
   // Strict geometric check against foul lines in front of the plate
   return Math.abs(attack) > FAIR_CONE_DEGREES;
