@@ -29,7 +29,7 @@ function makePitcher(pitching: number): Player {
 }
 
 test("At-bat outcome rates across contact and power (10,000 pitches each)", () => {
-  const trials = 15000;
+  const trials = 10000;
 
   console.log(
     `\nAt-bat outcome rates per ${trials.toLocaleString()} pitches, varying batter contact (0..10) and power (0..10).\n` +
@@ -39,8 +39,8 @@ test("At-bat outcome rates across contact and power (10,000 pitches each)", () =
   console.log(header);
   console.log("-".repeat(header.length));
 
-  // const fmt = (n: number) => ((n * 100) / trials).toFixed(1).padStart(6, " ");
-  const fmt = (n: number) => (`${n}`).padStart(6, " ");
+  const fmt = (n: number) => ((n * 100) / trials).toFixed(1).padStart(6, " ");
+  // const fmt = (n: number) => (`${n}`).padStart(6, " ");
 
   for (let contact = 0; contact <= 10; contact++) {
     for (let power = 0; power <= 10; power++) {

@@ -6,7 +6,9 @@ import { Team } from "../game/Team.ts";
 
 // Helpers
 function makePlayerWith(fielding = 5, running = 5, contact = 0, power = 0): Player {
-  return new Player(undefined, undefined, {
+  const first = (Math.random()*100).toFixed(0).toString();
+  const last = (Math.random()*100).toFixed(0).toString();
+  return new Player(first, last, {
     contact,
     power,
     running,
