@@ -1,6 +1,7 @@
 /*
  * Once a ball has been hit into play, the fielders must respond
  * and try to get as many runners out as possible.
+ * 
  */
 
 // The ball is hit into the air!
@@ -18,14 +19,35 @@ import { NarrationEngine } from "../narrator/NarrationEngine.ts";
 import { Player } from "./Player.ts";
 import { clamp } from "./math.ts";
 
+/**
+ * Classify ball type by launch angle
+ */
+type BallType = "GROUND" | "LINE" | "FLY" | "POP";
+
+function classifyBall(ball: BattedBall): BallType {
+  const a = ball.launch;
+  if (a < 10) return "GROUND";
+  if (a < 25) return "LINE";
+  if (a < 60) return "FLY";
+  return "POP";
+}
+
 const DEBUG_FIELDING = false;
 
 export function simulateFielding(
   ball: BattedBall,
   fieldingTeam: Team,
-): FieldResponse {
+  runners?: RunnersState,
+): FieldResponse | PlayResult {
   if (DEBUG_FIELDING) {
-    console.log(`Fielding simulation started for ball: velo=${ball.velo.toFixed(3)}, launch=${ball.launch.toFixed(3)}, attack=${ball.attack.toFixed(3)}, foul=${ball.foul}`);
+    console.log(
+      `Fielding simulation started for ball: velo=${ball.velo.toFixed(3)}, launch=${ball.launch.toFixed(3)}, attack=${ball.attack.toFixed(3)}, foul=${ball.foul}`,
+    );
+    if (runners) {
+      console.log(
+        `With runners: 1B=${runners.first?.fullName() ?? "empty"}, 2B=${runners.second?.fullName() ?? "empty"}, 3B=${runners.third?.fullName() ?? "empty"}, outs=${runners.outs}`,
+      );
+    }
   }
 
   // 0) Immediate HR shortcut: if it's over the fence, no fielding play
@@ -33,12 +55,37 @@ export function simulateFielding(
     if (DEBUG_FIELDING) {
       console.log(`Immediate home run detected - no fielding action needed.`);
     }
-    return {
+    const fieldResponse: FieldResponse = {
       fielder: chooseFallbackFielder(fieldingTeam),
       hit: true,
       error: false,
       result: "HOME_RUN",
       basesTaken: 4,
+    };
+    if (!runners) return fieldResponse;
+
+    // Full resolution with runners
+    let runnerAdvances: Partial<Record<BaseName, number>> = {};
+    let runs = 1; // batter scores
+    if (runners.third) {
+      runnerAdvances.third = 1;
+      runs++;
+    }
+    if (runners.second) {
+      runnerAdvances.second = 2;
+      runs++;
+    }
+    if (runners.first) {
+      runnerAdvances.first = 3;
+      runs++;
+    }
+    return {
+      field: fieldResponse,
+      outs: 0,
+      runs,
+      batterBases: 4,
+      runnerAdvances,
+      runnersOut: [],
     };
   }
 
@@ -49,7 +96,9 @@ export function simulateFielding(
   const airTime = calculateAirTime(ball);
   const ballType = classifyBall(ball);
   if (DEBUG_FIELDING) {
-    console.log(`Fielder selected: ${fielder.fullName()} at position ${pos} for drop zone. Ball type: ${ballType}, air time: ${airTime.toFixed(2)}s`);
+    console.log(
+      `Fielder selected: ${fielder.fullName()} at position ${pos} for drop zone. Ball type: ${ballType}, air time: ${airTime.toFixed(2)}s`,
+    );
   }
 
   // 2) Can it be caught?
@@ -58,7 +107,9 @@ export function simulateFielding(
     const pCatch = catchProbability(ball, fielder, pos, ballType, airTime);
     caught = Math.random() < pCatch;
     if (DEBUG_FIELDING) {
-      console.log(`${fielder.fullName()} attempts to catch ${ballType.toLowerCase()} ball. Catch probability: ${(pCatch * 100).toFixed(1)}%, result: ${caught ? 'caught' : 'not caught'}`);
+      console.log(
+        `${fielder.fullName()} attempts to catch ${ballType.toLowerCase()} ball. Catch probability: ${(pCatch * 100).toFixed(1)}%, result: ${caught ? "caught" : "not caught"}`,
+      );
     }
   } else if (DEBUG_FIELDING) {
     console.log(`Ground ball - no catch attempt.`);
@@ -69,12 +120,71 @@ export function simulateFielding(
     if (DEBUG_FIELDING) {
       console.log(`${fielder.fullName()} catches the ball for an out.`);
     }
-    return {
+    const fieldResponse: FieldResponse = {
       fielder,
       hit: false,
       error: false,
       result: "OUT",
       basesTaken: 0,
+    };
+    if (!runners) return fieldResponse;
+
+    // Full resolution with tag-up logic
+    const runnerAdvances: Partial<Record<BaseName, number>> = {};
+    const runnersOut: BaseName[] = [];
+    let outs = 1;
+    let runs = 0;
+
+    const allowTags = isOutfielder(pos);
+    const speed = (p?: Player) => clamp((p?.stats?.running ?? 0) / 10, 0, 1);
+    const arm = clamp((fielder.stats?.fielding ?? 0) / 10, 0, 1);
+
+    if (allowTags) {
+      // Third → Home
+      if (runners.third) {
+        const pTag = tagUpAdvanceProb(airTime, arm, 3);
+        if (Math.random() < pTag) {
+          const dist = estimateThrowDistanceCategory(pos, 4);
+          const pOut = throwOutProbability(dist, arm, speed(runners.third), ballType);
+          if (Math.random() < pOut) {
+            outs += 1;
+            runnersOut.push("third");
+          } else {
+            runnerAdvances.third = 1;
+            runs += 1;
+          }
+        }
+      }
+      // Second → Third
+      if (runners.second) {
+        const pTag = tagUpAdvanceProb(airTime, arm, 2);
+        if (Math.random() < pTag) {
+          const dist = estimateThrowDistanceCategory(pos, 3);
+          const pOut = throwOutProbability(dist, arm, speed(runners.second), ballType);
+          if (Math.random() < pOut) {
+            outs += 1;
+            runnersOut.push("second");
+          } else {
+            runnerAdvances.second = 1;
+          }
+        }
+      }
+      // First → Second
+      if (runners.first) {
+        const pTag = tagUpAdvanceProb(airTime, arm, 1);
+        if (Math.random() < pTag) {
+          runnerAdvances.first = 1;
+        }
+      }
+    }
+
+    return {
+      field: fieldResponse,
+      outs,
+      runs,
+      batterBases: 0,
+      runnerAdvances,
+      runnersOut,
     };
   }
 
@@ -84,7 +194,9 @@ export function simulateFielding(
   const cleanP = fieldCleanlyProbability(ball, fielder, pos, ballType);
   const clean = Math.random() < cleanP;
   if (DEBUG_FIELDING) {
-    console.log(`${fielder.fullName()} attempts to field cleanly. Clean probability: ${(cleanP * 100).toFixed(1)}%, result: ${clean ? 'clean' : 'error'}`);
+    console.log(
+      `${fielder.fullName()} attempts to field cleanly. Clean probability: ${(cleanP * 100).toFixed(1)}%, result: ${clean ? "clean" : "error"}`,
+    );
   }
   const baseHitOutcome = chooseBaseHitOutcome(
     ball,
@@ -94,15 +206,133 @@ export function simulateFielding(
     clean,
   );
   if (DEBUG_FIELDING) {
-    console.log(`Base hit outcome: ${baseHitOutcome.fieldOutcome}, batter takes ${baseHitOutcome.bases} base(s), error: ${!clean && baseHitOutcome.bases > 0}`);
+    console.log(
+      `Base hit outcome: ${baseHitOutcome.fieldOutcome}, batter takes ${baseHitOutcome.bases} base(s), error: ${!clean && baseHitOutcome.bases > 0}`,
+    );
   }
 
-  return {
+  const fieldResponse: FieldResponse = {
     fielder,
     hit: true,
     error: !clean && baseHitOutcome.bases > 0, // if misfield leads to extra base(s)
     result: baseHitOutcome.fieldOutcome,
     basesTaken: baseHitOutcome.bases,
+  };
+
+  if (!runners) return fieldResponse;
+
+  // Full resolution with runner advances and throws
+  const runnerAdvances: Partial<Record<BaseName, number>> = {};
+  const runnersOut: BaseName[] = [];
+  let outs = 0;
+  let runs = 0;
+  const batteryTakes = clamp(fieldResponse.basesTaken ?? 1, 1, 3) as 1 | 2 | 3;
+
+  const speed = (p?: Player) => clamp((p?.stats?.running ?? 0) / 10, 0, 1);
+  const arm = clamp((fielder.stats?.fielding ?? 0) / 10, 0, 1);
+
+  const angle = Math.abs(ball.attack);
+  const gapFactor = angle >= 20 && angle <= 45 ? 0.2 : 0; // gap helps runner advance
+
+  if (isOutfielder(pos)) {
+    // Default advances on hits to OF
+    if (runners.third) {
+      let pScore = batteryTakes >= 2 ? 0.95 : 0.7;
+      pScore += 0.15 * speed(runners.third) + gapFactor;
+      if (Math.random() < clamp(pScore, 0, 0.99)) {
+        runnerAdvances.third = 1;
+        runs += 1;
+      }
+    }
+    if (runners.second) {
+      let pScore = batteryTakes >= 2 ? 0.85 : 0.45;
+      pScore += 0.2 * speed(runners.second) + gapFactor;
+      if (Math.random() < clamp(pScore, 0, 0.99)) {
+        runnerAdvances.second = 2;
+        runs += 1;
+      } else {
+        runnerAdvances.second = 1;
+      }
+    }
+    if (runners.first) {
+      let toThird = 0.45 + 0.35 * speed(runners.first) + gapFactor;
+      if (batteryTakes >= 2) toThird += 0.15; // ball to gap/corner
+      toThird = clamp(toThird, 0.15, 0.9);
+      runnerAdvances.first = Math.random() < toThird ? 2 : 1;
+    }
+
+    // Throw target decisions
+    const target = chooseOutfieldThrowTarget(runners);
+    const dist = estimateThrowDistanceCategory(pos, target);
+
+    // Identify lead runner for the chosen target
+    let contested: { base: BaseName; advanceNeeded: number } | undefined;
+    if (target === 4) {
+      if (runners.second && runnerAdvances.second === 2)
+        contested = { base: "second", advanceNeeded: 2 };
+      else if (runners.third && runnerAdvances.third === 1)
+        contested = { base: "third", advanceNeeded: 1 };
+    } else if (target === 3) {
+      if (runners.first && (runnerAdvances.first ?? 0) >= 2)
+        contested = { base: "first", advanceNeeded: 2 };
+      else if (runners.second && (runnerAdvances.second ?? 0) >= 1)
+        contested = { base: "second", advanceNeeded: 1 };
+    } else if (target === 2) {
+      if (runners.first && (runnerAdvances.first ?? 0) >= 1)
+        contested = { base: "first", advanceNeeded: 1 };
+    }
+
+    if (contested) {
+      const runner =
+        contested.base === "first"
+          ? runners.first
+          : contested.base === "second"
+            ? runners.second
+            : runners.third;
+      if (runner) {
+        const pOut = throwOutProbability(dist, arm, speed(runner), ballType);
+        if (Math.random() < pOut) {
+          // Cut down the runner at target base
+          runnersOut.push(contested.base);
+          outs += 1;
+          // Revert their advance
+          runnerAdvances[contested.base] = 0;
+          // If they were attempting to score, erase the run
+          if (
+            target === 4 &&
+            (contested.base === "third" || contested.base === "second")
+          ) {
+            runs = Math.max(0, runs - 1);
+          }
+        }
+      }
+    }
+  } else {
+    // Infield hits: conservative advances
+    if (runners.third) {
+      const pScore = 0.2 + 0.35 * speed(runners.third);
+      if (Math.random() < pScore) {
+        runnerAdvances.third = 1;
+        runs += 1;
+      }
+    }
+    if (runners.second) {
+      const pAdvance = 0.3 + 0.3 * speed(runners.second);
+      runnerAdvances.second = Math.random() < pAdvance ? 1 : 0;
+    }
+    if (runners.first) {
+      const pAdvance = 0.65 + 0.2 * speed(runners.first);
+      runnerAdvances.first = Math.random() < pAdvance ? 1 : 0;
+    }
+  }
+
+  return {
+    field: fieldResponse,
+    outs,
+    runs,
+    batterBases: batteryTakes,
+    runnerAdvances,
+    runnersOut,
   };
 }
 
@@ -174,9 +404,9 @@ export function estimateDropZone(ball: BattedBall): FieldingPosition {
   const xAirFt = Math.max(0, vHorizFtps * t);
 
   // Grounder bias: clamp distance to keep it largely in/near infield
-  if (ball.launch < GROUND_LAUNCH) {
-    rangeFt = Math.min(rangeFt, 120);
-  }
+  // if (ball.launch < GROUND_LAUNCH) {
+  //   rangeFt = Math.min(rangeFt, 120);
+  // }
 
   const attack = ball.attack;
 
@@ -273,19 +503,6 @@ export function estimateDropZone(ball: BattedBall): FieldingPosition {
   return "Center Field";
 }
 
-/**
- * Classify ball type by launch angle
- */
-type BallType = "GROUND" | "LINE" | "FLY" | "POP";
-
-function classifyBall(ball: BattedBall): BallType {
-  const a = ball.launch;
-  if (a < 10) return "GROUND";
-  if (a < 25) return "LINE";
-  if (a < 60) return "FLY";
-  return "POP";
-}
-
 const OUTFIELD: FieldingPosition[] = [
   "Left Field",
   "Center Field",
@@ -311,7 +528,6 @@ function isBattery(pos: FieldingPosition) {
 
 function lookupFielder(team: Team, pos: FieldingPosition): Player | undefined {
   // Prefer exact position match
-  // @ts-ignore Team.players is expected to exist/populate externally
   const players: Player[] = (team as any).players ?? [];
   const exact = players.find((p) => p.position === pos);
   if (exact) return exact;
@@ -348,8 +564,8 @@ function lookupFielder(team: Team, pos: FieldingPosition): Player | undefined {
   return undefined;
 }
 
+// What the fuck chatgpt?
 function chooseFallbackFielder(team: Team): Player {
-  // @ts-ignore
   const players: Player[] = (team as any).players ?? [];
   return players[0] ?? new Player();
 }
@@ -394,8 +610,8 @@ function catchProbability(
     p *= 1 - veloPenalty;
   }
 
-  // Over-the-fence balls cannot be caught
-  if (ball.homer && ball.launch > 0) p = 0;
+  // Over-the-fence balls cannot be caught... or can it?
+  if (ball.homer && ball.launch > 0) p = 0.01;
 
   return clamp(p, 0, 0.995);
 }
@@ -585,7 +801,7 @@ function throwOutProbability(
   runnerSpeed: number,
   ballType: BallType,
 ): number {
-  let base = distance === "SHORT" ? 0.8 : distance === "MEDIUM" ? 0.55 : 0.3;
+  let base = distance === "SHORT" ? 0.4 : distance === "MEDIUM" ? 0.2 : 0.1;
   // Scale by skills
   base += 0.2 * (fielderSkill - 0.5);
   base -= 0.2 * (runnerSpeed - 0.5);
@@ -625,353 +841,4 @@ function tagUpAdvanceProb(
   let p = logistic((airTime - 3.2) / 0.35);
   p -= 0.12 * (arm - 0.5);
   return clamp(p, 0.1, 0.6);
-}
-
-/**
- * Full resolution with runner context and throw decisions.
- * - Uses simulateFielding() to determine batter/fielder, then applies strategy/running to compute outs/runs.
- * - Returns a compact, deterministic PlayResult the Game can apply.
- */
-export function simulateFieldingWithRunners(
-  runners: RunnersState,
-  ball: BattedBall,
-  fieldingTeam: Team,
-): PlayResult {
-  if (DEBUG_FIELDING) {
-    console.log(`Fielding with runners simulation started. Runners: 1B=${runners.first?.fullName() ?? 'empty'}, 2B=${runners.second?.fullName() ?? 'empty'}, 3B=${runners.third?.fullName() ?? 'empty'}, outs=${runners.outs}`);
-  }
-  const field = simulateFielding(ball, fieldingTeam);
-  const pos = estimateDropZone(ball);
-  const fielder = field.fielder;
-  const ballType = classifyBall(ball);
-  const airTime = calculateAirTime(ball);
-  if (DEBUG_FIELDING) {
-    console.log(`Field response: ${field.result}, hit=${field.hit}, error=${field.error}, basesTaken=${field.basesTaken}`);
-  }
-
-  const runnerAdvances: Partial<Record<BaseName, number>> = {};
-  const runnersOut: BaseName[] = [];
-  let outs = 0;
-  let runs = 0;
-  let batterBases: 0 | 1 | 2 | 3 | 4 = 0;
-
-  // Helper to get runner speed
-  const speed = (p?: Player) => clamp((p?.stats?.running ?? 0) / 10, 0, 1);
-  const arm = clamp((fielder.stats?.fielding ?? 0) / 10, 0, 1);
-
-  if (DEBUG_FIELDING) {
-    console.log(`Fielder arm strength: ${arm.toFixed(2)}, position: ${pos}`);
-  }
-
-  // 0) Home run: everyone advances fully
-  if (field.result === "HOME_RUN" && field.basesTaken === 4) {
-    if (DEBUG_FIELDING) {
-      console.log(`Home run! All runners advance fully, batter scores.`);
-    }
-    batterBases = 4;
-    if (runners.third) {
-      runnerAdvances.third = 1;
-      runs++;
-    }
-    if (runners.second) {
-      runnerAdvances.second = 2;
-      runs++;
-    }
-    if (runners.first) {
-      runnerAdvances.first = 3;
-      runs++;
-    }
-    // Batter scores too
-    runs += 1;
-    return { field, outs, runs, batterBases, runnerAdvances, runnersOut };
-  }
-
-  // 1) Caught in air → tag-up logic
-  if (field.result === "OUT" && field.hit === false) {
-    if (DEBUG_FIELDING) {
-      console.log(`Ball caught for out. Tag-up attempts possible if outfield.`);
-    }
-    outs += 1;
-
-    // Outfield tag-ups preferred; infield tag-ups are rare
-    const allowTags = isOutfielder(pos);
-
-    if (DEBUG_FIELDING) {
-      console.log(`Tag-ups allowed: ${allowTags} (outfield: ${isOutfielder(pos)})`);
-    }
-
-    if (allowTags) {
-      // Third → Home
-      if (runners.third) {
-        const pTag = tagUpAdvanceProb(airTime, arm, 3);
-        if (DEBUG_FIELDING) {
-          console.log(`R3 (${runners.third.fullName()}) tag-up attempt from 3B to home. Prob: ${(pTag * 100).toFixed(1)}%`);
-        }
-        if (Math.random() < pTag) {
-          // OF will try to throw home in this situation
-          const dist = estimateThrowDistanceCategory(pos, 4);
-          const pOut = throwOutProbability(
-            dist,
-            arm,
-            speed(runners.third),
-            ballType,
-          );
-          if (DEBUG_FIELDING) {
-            console.log(`Throw home to R3. Distance: ${dist}, out prob: ${(pOut * 100).toFixed(1)}%`);
-          }
-          if (Math.random() < pOut) {
-            outs += 1;
-            runnersOut.push("third");
-            if (DEBUG_FIELDING) {
-              console.log(`R3 thrown out at home.`);
-            }
-          } else {
-            runnerAdvances.third = 1;
-            runs += 1;
-            if (DEBUG_FIELDING) {
-              console.log(`R3 scores on tag-up.`);
-            }
-          }
-        }
-      }
-      // Second → Third
-      if (runners.second) {
-        const pTag = tagUpAdvanceProb(airTime, arm, 2);
-        if (DEBUG_FIELDING) {
-          console.log(`R2 (${runners.second.fullName()}) tag-up attempt from 2B to 3B. Prob: ${(pTag * 100).toFixed(1)}%`);
-        }
-        if (Math.random() < pTag) {
-          // Throw tends to go to 3rd if contested
-          const dist = estimateThrowDistanceCategory(pos, 3);
-          const pOut = throwOutProbability(
-            dist,
-            arm,
-            speed(runners.second),
-            ballType,
-          );
-          if (DEBUG_FIELDING) {
-            console.log(`Throw to 3B for R2. Distance: ${dist}, out prob: ${(pOut * 100).toFixed(1)}%`);
-          }
-          if (Math.random() < pOut) {
-            outs += 1;
-            runnersOut.push("second");
-            if (DEBUG_FIELDING) {
-              console.log(`R2 thrown out at 3B.`);
-            }
-          } else {
-            runnerAdvances.second = 1;
-            if (DEBUG_FIELDING) {
-              console.log(`R2 advances to 3B on tag-up.`);
-            }
-          }
-        }
-      }
-      // First → Second
-      if (runners.first) {
-        const pTag = tagUpAdvanceProb(airTime, arm, 1);
-        if (DEBUG_FIELDING) {
-          console.log(`R1 (${runners.first.fullName()}) tag-up attempt from 1B to 2B. Prob: ${(pTag * 100).toFixed(1)}%`);
-        }
-        if (Math.random() < pTag) {
-          // Most throws are kept low to 2B; seldom an out here
-          runnerAdvances.first = 1;
-          if (DEBUG_FIELDING) {
-            console.log(`R1 advances to 2B on tag-up.`);
-          }
-        }
-      }
-    }
-    batterBases = 0;
-    if (DEBUG_FIELDING) {
-      console.log(`Catch complete. Outs: ${outs}, runs: ${runs}, runner advances:`, runnerAdvances);
-    }
-    return { field, outs, runs, batterBases, runnerAdvances, runnersOut };
-  }
-
-  // 2) Not caught → apply base hit and OF/IF strategy for runner advances and potential throws
-  const batterTakes = clamp(field.basesTaken ?? 1, 1, 3) as 1 | 2 | 3;
-  batterBases = batterTakes;
-
-  if (DEBUG_FIELDING) {
-    console.log(`Base hit: batter takes ${batterTakes} base(s).`);
-  }
-
-  const angle = Math.abs(ball.attack);
-  const gapFactor = angle >= 20 && angle <= 45 ? 0.2 : 0; // gap helps runner advance
-
-  if (DEBUG_FIELDING) {
-    console.log(`Hit angle: ${angle}°, gap factor: ${gapFactor}`);
-  }
-
-  if (isOutfielder(pos)) {
-    if (DEBUG_FIELDING) {
-      console.log(`Outfield hit - evaluating runner advances.`);
-    }
-    // Default advances on hits to OF
-    if (runners.third) {
-      // R3 generally scores on singles; almost always on XBH
-      let pScore = batterTakes >= 2 ? 0.95 : 0.7;
-      pScore += 0.15 * speed(runners.third) + gapFactor;
-      if (DEBUG_FIELDING) {
-        console.log(`R3 scoring attempt. Prob: ${(pScore * 100).toFixed(1)}%`);
-      }
-      if (Math.random() < clamp(pScore, 0, 0.99)) {
-        runnerAdvances.third = 1;
-        runs += 1;
-        if (DEBUG_FIELDING) {
-          console.log(`R3 scores.`);
-        }
-      }
-    }
-    if (runners.second) {
-      let bases = 1; // aim to score on singles if hit well
-      let pScore = batterTakes >= 2 ? 0.85 : 0.45;
-      pScore += 0.2 * speed(runners.second) + gapFactor;
-      if (DEBUG_FIELDING) {
-        console.log(`R2 scoring attempt. Prob: ${(pScore * 100).toFixed(1)}%`);
-      }
-      if (Math.random() < clamp(pScore, 0, 0.99)) {
-        runnerAdvances.second = 2;
-        runs += 1;
-        if (DEBUG_FIELDING) {
-          console.log(`R2 scores.`);
-        }
-      } else {
-        runnerAdvances.second = 1;
-        if (DEBUG_FIELDING) {
-          console.log(`R2 advances to 3B.`);
-        }
-      }
-    }
-    if (runners.first) {
-      // R1 often goes first-to-third on singles to OF, more with speed and gaps
-      let toThird = 0.45 + 0.35 * speed(runners.first) + gapFactor;
-      if (batterTakes >= 2) toThird += 0.15; // ball to gap/corner
-      toThird = clamp(toThird, 0.15, 0.9);
-      if (DEBUG_FIELDING) {
-        console.log(`R1 advance to 3B attempt. Prob: ${(toThird * 100).toFixed(1)}%`);
-      }
-      runnerAdvances.first = Math.random() < toThird ? 2 : 1;
-      if (DEBUG_FIELDING) {
-        console.log(`R1 advances ${runnerAdvances.first} base(s).`);
-      }
-    }
-
-    // Throw target decisions per OUTFIELD_STRATEGY.md
-    const target = chooseOutfieldThrowTarget(runners);
-    if (DEBUG_FIELDING) {
-      console.log(`${fielder.fullName()} throws to ${target}${target === 4 ? 'th' : 'nd'}-base.`);
-    }
-    const dist = estimateThrowDistanceCategory(pos, target);
-
-    // Identify lead runner for the chosen target
-    let contested: { base: BaseName; advanceNeeded: number } | undefined;
-    if (target === 4) {
-      if (runners.second && runnerAdvances.second === 2)
-        contested = { base: "second", advanceNeeded: 2 };
-      else if (runners.third && runnerAdvances.third === 1)
-        contested = { base: "third", advanceNeeded: 1 };
-    } else if (target === 3) {
-      if (runners.first && (runnerAdvances.first ?? 0) >= 2)
-        contested = { base: "first", advanceNeeded: 2 };
-      else if (runners.second && (runnerAdvances.second ?? 0) >= 1)
-        contested = { base: "second", advanceNeeded: 1 };
-    } else if (target === 2) {
-      if (runners.first && (runnerAdvances.first ?? 0) >= 1)
-        contested = { base: "first", advanceNeeded: 1 };
-    }
-
-    if (DEBUG_FIELDING && contested) {
-      console.log(`Contested runner at ${contested.base} attempting ${contested.advanceNeeded} base(s).`);
-    }
-
-    if (contested) {
-      const runner =
-        contested.base === "first"
-          ? runners.first
-          : contested.base === "second"
-            ? runners.second
-            : runners.third;
-      if (runner) {
-        const pOut = throwOutProbability(dist, arm, speed(runner), ballType);
-        if (DEBUG_FIELDING) {
-          console.log(`Throw out attempt on ${runner.fullName()} at ${contested.base}. Distance: ${dist}, prob: ${(pOut * 100).toFixed(1)}%`);
-        }
-        if (Math.random() < pOut) {
-          // Cut down the runner at target base
-          runnersOut.push(contested.base);
-          outs += 1;
-          // Revert their advance
-          runnerAdvances[contested.base] = 0;
-          // If they were attempting to score, erase the run
-          if (
-            target === 4 &&
-            (contested.base === "third" || contested.base === "second")
-          ) {
-            runs = Math.max(0, runs - 1);
-          }
-          if (DEBUG_FIELDING) {
-            console.log(`${runner.fullName()} thrown out at ${contested.base}.`);
-          }
-        } else if (DEBUG_FIELDING) {
-          console.log(`${runner.fullName()} safe at ${contested.base}.`);
-        }
-      }
-    }
-  } else {
-    if (DEBUG_FIELDING) {
-      console.log(`Infield hit - conservative runner advances.`);
-    }
-    // Infield hits: conservative advances, little chance of throwing out existing runners
-    if (runners.third) {
-      const pScore = 0.2 + 0.35 * speed(runners.third);
-      if (DEBUG_FIELDING) {
-        console.log(`R3 scoring on infield hit. Prob: ${(pScore * 100).toFixed(1)}%`);
-      }
-      if (Math.random() < pScore) {
-        runnerAdvances.third = 1;
-        runs += 1;
-        if (DEBUG_FIELDING) {
-          console.log(`R3 scores.`);
-        }
-      }
-    }
-    if (runners.second) {
-      const pAdvance = 0.3 + 0.3 * speed(runners.second);
-      if (DEBUG_FIELDING) {
-        console.log(`R2 advance to 3B on infield hit. Prob: ${(pAdvance * 100).toFixed(1)}%`);
-      }
-      runnerAdvances.second = Math.random() < pAdvance ? 1 : 0;
-      if (DEBUG_FIELDING && runnerAdvances.second === 1) {
-        console.log(`R2 advances to 3B.`);
-      }
-    }
-    if (runners.first) {
-      const pAdvance = 0.65 + 0.2 * speed(runners.first);
-      if (DEBUG_FIELDING) {
-        console.log(`R1 advance to 2B on infield hit. Prob: ${(pAdvance * 100).toFixed(1)}%`);
-      }
-      runnerAdvances.first = Math.random() < pAdvance ? 1 : 0;
-      if (DEBUG_FIELDING && runnerAdvances.first === 1) {
-        console.log(`R1 advances to 2B.`);
-      }
-    }
-  }
-
-  const playResult = {
-    field,
-    outs,
-    runs,
-    batterBases,
-    runnerAdvances,
-    runnersOut,
-  };
-
-  if (DEBUG_FIELDING) {
-    console.log(`Fielding complete. Final: outs=${outs}, runs=${runs}, batter to ${batterBases}B, runners out: [${runnersOut.join(', ')}], advances:`, runnerAdvances);
-  }
-
-  // new NarrationEngine().narrateFielding(playResult, runners, ball.batter);
-
-  return playResult;
 }

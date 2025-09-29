@@ -15,7 +15,7 @@ export function simulatePitch(pitcher: Player): ThrownPitch {
 
     const isStrike = Math.random() < pStrike;
 
-    let quality = normal(skill, 0.65) + (skill * 2);
+    let quality = normal(skill, 0.65) + (skill);
 
     const pitch: ThrownPitch = {
         pitcher,

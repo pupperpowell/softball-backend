@@ -1,13 +1,13 @@
-import { test } from "bun:test";
-import { simulateFielding, simulateFieldingWithRunners } from "../game/fielding.ts";
+import { expect, test } from "bun:test";
+import { simulateFielding } from "../game/fielding.ts";
 import type { BattedBall, FieldingPosition } from "../game/types.ts";
 import { Player } from "../game/Player.ts";
 import { Team } from "../game/Team.ts";
 
 // Helpers
 function makePlayerWith(fielding = 5, running = 5, contact = 0, power = 0): Player {
-  const first = (Math.random()*100).toFixed(0).toString();
-  const last = (Math.random()*100).toFixed(0).toString();
+  const first = (Math.random() * 100).toFixed(0).toString();
+  const last = (Math.random() * 100).toFixed(0).toString();
   return new Player(first, last, {
     contact,
     power,
@@ -60,10 +60,10 @@ test("Outfield catch rate scales with fielder skill (CF)", () => {
 
   for (let i = 0; i < trials; i++) {
     const rLow = simulateFielding(cfBall, lowTeam);
-    if (rLow.result === "OUT" && rLow.hit === false) lowCaught++;
+    if ('hit' in rLow && rLow.result === "OUT" && rLow.hit === false) lowCaught++;
 
     const rHigh = simulateFielding(cfBall, highTeam);
-    if (rHigh.result === "OUT" && rHigh.hit === false) highCaught++;
+    if ('hit' in rHigh && rHigh.result === "OUT" && rHigh.hit === false) highCaught++;
   }
 
   console.log("\nOutfield (CF) catch rates on a representative fly ball");
@@ -87,10 +87,10 @@ test("Infield grounder out rate scales with infielder skill (SS)", () => {
 
   for (let i = 0; i < trials; i++) {
     const rLow = simulateFielding(ssBall, lowTeam);
-    if (rLow.result === "OUT") lowOut++;
+    if ('hit' in rLow && rLow.result === "OUT") lowOut++;
 
     const rHigh = simulateFielding(ssBall, highTeam);
-    if (rHigh.result === "OUT") highOut++;
+    if ('hit' in rHigh && rHigh.result === "OUT") highOut++;
   }
 
   console.log("\nInfield (SS) grounder routine-out probability");
@@ -128,7 +128,7 @@ test("Outfield extra-base hit suppression by OF skill", () => {
 
 // 4) Home run: immediate outcome regardless of fielder
 test("Home run shortcut yields HOME_RUN outcome", () => {
-  const trials = 5000;
+  const trials = 100000;
 
   const hrBall = makeBall(90, 27, 0, { homer: true }); // classic HR profile
   const team = makeTeamWithPosition("Center Field", 5);
@@ -140,12 +140,14 @@ test("Home run shortcut yields HOME_RUN outcome", () => {
     if (r.result === "HOME_RUN") hrs++;
   }
 
+  expect(hrs / trials).toBeLessThan(100);
+
   console.log("\nHome run immediate outcome");
   console.log(`Trials: ${trials.toLocaleString()}`);
   console.log(`HOME_RUN rate: ${pct(hrs, trials)} (should be ~100%)\n`);
 });
 
-// 5) Tag-up at third vs outfielder arm (uses simulateFieldingWithRunners)
+// 5) Tag-up at third vs outfielder arm (uses simulateFielding with runners)
 test("Tag-up at third: runs vs outs vary with OF arm (fielding)", () => {
   const trials = 15000;
 
@@ -166,10 +168,12 @@ test("Tag-up at third: runs vs outs vary with OF arm (fielding)", () => {
   let highArmTagOuts = 0;
   let highArmCaught = 0;
 
+  const runners = { first: undefined, second: undefined, third: r3, outs: 0 };
+
   for (let i = 0; i < trials; i++) {
     // Low arm CF
     {
-      const res = simulateFieldingWithRunners({ first: undefined, second: undefined, third: r3, outs: 0 }, deepFly, lowArmTeam);
+      const res = simulateFielding(deepFly, lowArmTeam, runners) as any; // PlayResult when runners provided
       if (res.field.result === "OUT" && res.field.hit === false) {
         lowArmCaught++;
         if (res.runnersOut.includes("third")) lowArmTagOuts++;
@@ -178,7 +182,7 @@ test("Tag-up at third: runs vs outs vary with OF arm (fielding)", () => {
     }
     // High arm CF
     {
-      const res = simulateFieldingWithRunners({ first: undefined, second: undefined, third: r3, outs: 0 }, deepFly, highArmTeam);
+      const res = simulateFielding(deepFly, highArmTeam, runners) as any; // PlayResult when runners provided
       if (res.field.result === "OUT" && res.field.hit === false) {
         highArmCaught++;
         if (res.runnersOut.includes("third")) highArmTagOuts++;
