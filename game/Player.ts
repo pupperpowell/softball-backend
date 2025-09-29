@@ -1,9 +1,8 @@
-import { expect, test } from "bun:test";
 import type { FieldingPosition, Stats } from "./types";
 
 export class Player {
     firstname: String = Math.random() > 0.5 ? "John" : "Jane";
-    lastname: String = "Doe";
+    lastname: String = Math.random() > 0.5 ? "Deer" : "Doe";
     
     stats: Stats = {
         contact: 0,
@@ -15,13 +14,14 @@ export class Player {
         growth: 0
     };
 
-    public position: FieldingPosition = "Bench";
+    public activePosition: FieldingPosition = "Bench";
+    public primaryPosition: FieldingPosition = "Bench";
 
     constructor(first?: string, last?: string, stats?: Stats, position?: FieldingPosition) {
         if (first) this.firstname = first;
         if (last) this.lastname = last;
         if (stats) this.stats = stats;
-        if (position) this.position = position;
+        if (position) this.activePosition = position;
     }
 
     /**
@@ -35,8 +35,3 @@ export class Player {
         return `${this.firstname} ${this.lastname}`;
     }
 }
-
-// test("Player toString()", () => {
-//     expect(new Player().toString()).toBe("J. Doe")
-//     expect(new Player("Johnny", "Carson").fullName()).toBe("Johnny Carson")
-// });

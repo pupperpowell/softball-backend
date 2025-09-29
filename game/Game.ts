@@ -4,7 +4,7 @@ import { Player } from "./Player.ts";
 import { simulateAtBat } from "./simulateAtBat.ts";
 import type { Team } from "./Team";
 import {
-	simulateFieldingWithRunners,
+	simulateFielding,
 	type RunnersState,
 	type PlayResult,
 } from "./fielding.ts";
@@ -158,7 +158,6 @@ export class Game {
 	}
 
 	simulate() { // should eventually return a BoxScore
-
 		const debug = false; // Enable/disable debug console.log statements
 
 		if (debug) console.log('[GAME SIMULATE]: Starting game simulation');
@@ -184,7 +183,7 @@ export class Game {
 				// Determine pitcher from fielding team roster if available; fallback to a new Player
 				const fieldingTeam = this.isTopHalf ? this.homeTeam : this.awayTeam;
 				const pitcher: Player =
-					((fieldingTeam as any).players?.find((p: Player) => p.position === "Pitcher")) ??
+					((fieldingTeam as any).players?.find((p: Player) => p.activePosition === "Pitcher")) ??
 					new Player();
 
 				if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
@@ -220,10 +219,10 @@ export class Game {
 					};
 
 					// Field the ball with the defensive team
-					const play = simulateFieldingWithRunners(runners, result.battedBall, fieldingTeam);
+					const fieldingResult = simulateFielding(result.battedBall, fieldingTeam, runners);
 
 					// Apply to game state (outs, runs, base advancements, batter placement)
-					this.applyPlay(play, hitter);
+					this.applyPlay(fieldingResult, hitter);
 
 					// Next batter
 					if (this.isTopHalf) this.awayBatterIndex++;
@@ -249,9 +248,6 @@ export class Game {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
-				// console.log(
-				// 	`Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString} in ${this.currentInning} innings`,
-				// );
 				break;
 			}
 
@@ -270,15 +266,10 @@ export class Game {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
-				// console.log(
-				// 	`Game over. ${this.winner.name} beat ${loser.name} ${finalScoreString} in ${this.currentInning} innings`,
-				// );
 				break;
 			}
 
 			// Otherwise progress to the next half-inning (this also handles extra innings when tied)
-			// this.isGameOver = true; // for debugging
-			// this.winner = this.homeTeam;
 			this.nextHalf();
 		}
 	}
