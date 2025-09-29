@@ -1,7 +1,7 @@
 import { test } from "bun:test";
-import { simulatePitch } from "../game/pitching.ts";
-import { Player } from "../game/Player.ts";
-import type { Stats } from "../game/types.ts";
+import { simulatePitch } from "../../game/pitching.ts";
+import { Player } from "../../game/Player.ts";
+import type { Stats } from "../../game/types.ts";
 
 function makePitcher(pitching: number): Player {
   const stats: Stats = {
