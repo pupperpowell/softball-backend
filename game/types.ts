@@ -1,5 +1,6 @@
 import type { Player } from "./Player.ts";
 import type { Team } from "./Team.ts";
+import type { BoxScore } from "./BoxScore.ts";
 
 // Amount of skill a player has in each category. From 0 to 10.
 export type Stats = {
@@ -53,7 +54,13 @@ export type BattedBall = {
   launch: number; // launch angle
 }
 
-export type FieldOutcome =
+export type RunnersState = {
+  first?: Player;
+  second?: Player;
+  third?: Player;
+}
+
+export type PlayType =
   | "SINGLE"
   | "DOUBLE"
   | "TRIPLE"
@@ -62,13 +69,42 @@ export type FieldOutcome =
   | "DOUBLE_PLAY"
   | "TRIPLE_PLAY";
 
-export type FieldResponse = { // What does a fielder do when they attempt to field the ball?
-  fielder: Player;
-  hit: boolean; // If the ball is not caught
-  error: boolean;
-  result: FieldOutcome;
-  // number of bases the batter takes on the play
-  basesTaken?: number; // is this needed?
+export type FieldOutcome = { // What happens when fielding is said and done?
+  primary_fielder: Player;
+  playType: PlayType;
+  updatedBases: RunnersState;
+};
+
+export interface AtBatResult {
+  outcome: AtBatOutcome;
+  balls: number;
+  strikes: number;
+  pitches: ThrownPitch[];
+  swings: boolean[];
+  battedBall?: BattedBall; // present when outcome is IN_PLAY
+}
+
+export type PlayerBattingStats = {
+  atBats: number;
+  hits: number;
+  walks: number;
+  strikeouts: number;
+  runs: number;
+  rbis: number;
+};
+
+export type PlayerPitchingStats = {
+  pitchesThrown: number;
+  strikes: number;
+  balls: number;
+  strikeouts: number;
+  walks: number;
+};
+
+export type PlayerFieldingStats = {
+  putouts: number;
+  assists: number;
+  errors: number;
 };
 
 export interface GameState {
@@ -81,6 +117,7 @@ export interface GameState {
   homeBatterIndex: number;
   awayBatterIndex: number;
   outs: number;
-  onBase: Player[];
+  basesOccupied: RunnersState;
   isGameOver: boolean;
+  boxScore: BoxScore;
 }

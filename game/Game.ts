@@ -3,14 +3,12 @@ import { NarrationEngine } from "../narrator/NarrationEngine.ts";
 import { Player } from "./Player.ts";
 import { simulateAtBat } from "./simulateAtBat.ts";
 import type { Team } from "./Team";
-import {
-	simulateFielding,
-	type RunnersState,
-	type PlayResult,
-} from "./fielding.ts";
+import { BoxScore } from "./BoxScore.ts";
+import { simulateFielding } from "./fielding.ts";
+import type { GameState, RunnersState, PlayerBattingStats, PlayerPitchingStats, PlayerFieldingStats, FieldOutcome, AtBatResult } from "./types.ts";
 
 // This class contains the state for each game.
-export class Game {
+export class Game implements GameState {
 	homeTeam: Team;
 	awayTeam: Team;
 	homeScore = 0;
@@ -25,6 +23,7 @@ export class Game {
 		second?: Player;
 		third?: Player;
 	};
+	boxScore = new BoxScore();
 	isGameOver = false;
 	winner?: Team;
 
@@ -34,7 +33,7 @@ export class Game {
 		}
 		this.homeTeam = homeTeam;
 		this.awayTeam = awayTeam;
-		this.basesOccupied = {};
+	this.basesOccupied = {};
 	}
 
 	// Progress the inning, or go to the next one
@@ -54,6 +53,54 @@ export class Game {
 		} else {
 			this.homeScore += runs;
 		}
+	}
+
+	getPlayerKey(player: Player): string {
+		return `${player.firstname}-${player.lastname}`.toLowerCase();
+	}
+
+	updateBattingStat(player: Player, stat: keyof PlayerBattingStats, increment: number): void {
+		const battingStats = this.isTopHalf ? this.boxScore.awayBattingStats : this.boxScore.homeBattingStats;
+		const playerKey = this.getPlayerKey(player);
+		if (!battingStats[playerKey]) {
+			battingStats[playerKey] = {
+				atBats: 0,
+				hits: 0,
+				walks: 0,
+				strikeouts: 0,
+				runs: 0,
+				rbis: 0,
+			};
+		}
+		battingStats[playerKey][stat] += increment;
+	}
+
+	updatePitchingStat(player: Player, stat: keyof PlayerPitchingStats, increment: number): void {
+		const pitchingStats = this.isTopHalf ? this.boxScore.homePitchingStats : this.boxScore.awayPitchingStats;
+		const playerKey = this.getPlayerKey(player);
+		if (!pitchingStats[playerKey]) {
+			pitchingStats[playerKey] = {
+				pitchesThrown: 0,
+				strikes: 0,
+				balls: 0,
+				strikeouts: 0,
+				walks: 0,
+			};
+		}
+		pitchingStats[playerKey][stat] += increment;
+	}
+
+	updateFieldingStat(player: Player, stat: keyof PlayerFieldingStats, increment: number, fielderTeam: Team): void {
+		const fieldingStats = fielderTeam === this.homeTeam ? this.boxScore.homeFieldingStats : this.boxScore.awayFieldingStats;
+		const playerKey = this.getPlayerKey(player);
+		if (!fieldingStats[playerKey]) {
+			fieldingStats[playerKey] = {
+				putouts: 0,
+				assists: 0,
+				errors: 0,
+			};
+		}
+		fieldingStats[playerKey][stat] += increment;
 	}
 
 	// Base running methods
@@ -111,50 +158,12 @@ export class Game {
 		this.basesOccupied = {};
 	}
 
-	// Apply a resolved play result (from fielding) to game state
-	private applyPlay(play: PlayResult, batter: Player): void {
-		// Add outs and runs from the play
-		this.outs += play.outs;
-		if (play.runs > 0) this.addRuns(play.runs);
+	getFieldingTeam(): Team {
+		return this.isTopHalf ? this.homeTeam : this.awayTeam;
+	}
 
-		// Snapshot current runners
-		const current = { ...this.basesOccupied };
-
-		// Remove any runners who were retired
-		const outSet = new Set(play.runnersOut ?? []);
-		if (outSet.has("first")) current.first = undefined;
-		if (outSet.has("second")) current.second = undefined;
-		if (outSet.has("third")) current.third = undefined;
-
-		// Helper to move a runner by N bases without re-adding runs (already counted in play.runs)
-		const moveRunner = (runner: Player | undefined, fromBase: 1 | 2 | 3, advance: number) => {
-			if (!runner) return;
-			const dest = fromBase + (advance ?? 0);
-			if (dest >= 4) {
-				// Scored already accounted in play.runs
-				return;
-			}
-			if (dest === 3) this.basesOccupied.third = runner;
-			else if (dest === 2) this.basesOccupied.second = runner;
-			else if (dest === 1) this.basesOccupied.first = runner;
-		};
-
-		// Reset bases; rebuild from runnerAdvances and batter
-		this.basesOccupied = {};
-
-		const adv = play.runnerAdvances ?? {};
-
-		// Process in order: third, second, first to avoid collisions
-		moveRunner(current.third, 3, adv.third ?? 0);
-		moveRunner(current.second, 2, adv.second ?? 0);
-		moveRunner(current.first, 1, adv.first ?? 0);
-
-		// Place batter if he reached safely
-		const batterBases = play.batterBases ?? 0;
-		if (batterBases === 1) this.basesOccupied.first = batter;
-		else if (batterBases === 2) this.basesOccupied.second = batter;
-		else if (batterBases === 3) this.basesOccupied.third = batter;
-		// batterBases === 0 → out; === 4 → HR (runs already counted)
+	getBattingTeam(): Team {
+		return this.isTopHalf ? this.awayTeam : this.homeTeam;
 	}
 
 	simulate() { // should eventually return a BoxScore
@@ -162,11 +171,12 @@ export class Game {
 
 		if (debug) console.log('[GAME SIMULATE]: Starting game simulation');
 
+		let runsAtStartOfHalf = 0;
 		let startingAwayScore = this.awayScore;
 		while (!this.isGameOver) {
-			// Record the starting away score whenever a new top half begins
-			if (this.outs === 0 && this.isTopHalf) {
-				startingAwayScore = this.awayScore;
+			// Record the starting score at the beginning of each half-inning
+			if (this.outs === 0) {
+				runsAtStartOfHalf = this.isTopHalf ? this.awayScore : this.homeScore;
 			}
 
 			if (this.outs < 3) {
@@ -175,26 +185,44 @@ export class Game {
 
 				// get current hitter in the lineup
 				// NOTE: getPlayers() is TODO in Team.ts; keeping call for now.
-				const hitter =
-					((this.isTopHalf
-						? (this.awayTeam as any).getPlayers?.(this.awayBatterIndex % 9)
-						: (this.homeTeam as any).getPlayers?.(this.homeBatterIndex % 9)) as Player) ?? new Player();
+				const batterIndex = this.isTopHalf ? this.awayBatterIndex : this.homeBatterIndex;
+				const hitter = this.getBattingTeam().players[batterIndex % 9];
+				if (!hitter) {
+					throw new Error(`No hitter available at position ${batterIndex % 9} for team ${this.getBattingTeam().name}`);
+				}
 
 				// Determine pitcher from fielding team roster if available; fallback to a new Player
-				const fieldingTeam = this.isTopHalf ? this.homeTeam : this.awayTeam;
-				const pitcher: Player =
-					((fieldingTeam as any).players?.find((p: Player) => p.activePosition === "Pitcher")) ??
-					new Player();
+				const fieldingTeam: Team = this.isTopHalf ? this.homeTeam : this.awayTeam;
+				const pitcher = fieldingTeam.players.find((p: Player) => p.activePosition === "Pitcher");
+				if (!pitcher) {
+					throw new Error("No pitcher found!")
+				}
 
 				if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
 
 				// simulate the at-bat
-				const result = simulateAtBat(hitter, pitcher);
+				const result: AtBatResult = simulateAtBat(hitter, pitcher);
+
+				// Update pitching stats for every pitch
+				this.updatePitchingStat(pitcher, 'pitchesThrown', result.pitches.length);
+				this.updatePitchingStat(pitcher, 'strikes', result.strikes);
+				this.updatePitchingStat(pitcher, 'balls', result.balls);
 
 				// Resolve outcome
 				if (result.outcome === "WALK") {
 					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} walked`);
+					this.updateBattingStat(hitter, 'walks', 1);
+					this.updatePitchingStat(pitcher, 'walks', 1);
+					const runsBeforeWalk = this.isTopHalf ? this.awayScore : this.homeScore;
 					this.handleWalk(hitter);
+					const runsAfterWalk = this.isTopHalf ? this.awayScore : this.homeScore;
+					const runsOnWalk = runsAfterWalk - runsBeforeWalk;
+					if (runsOnWalk > 0) {
+						this.updateBattingStat(hitter, 'rbis', runsOnWalk);
+						if (this.basesOccupied.third) {
+							this.updateBattingStat(this.basesOccupied.third!, 'runs', 1);
+						}
+					}
 					if (this.isTopHalf) this.awayBatterIndex++;
 					else this.homeBatterIndex++;
 					continue;
@@ -202,6 +230,9 @@ export class Game {
 
 				if (result.outcome === "STRIKEOUT") {
 					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} struck out`);
+					this.updateBattingStat(hitter, 'atBats', 1);
+					this.updateBattingStat(hitter, 'strikeouts', 1);
+					this.updatePitchingStat(pitcher, 'strikeouts', 1);
 					this.outs++;
 					if (this.isTopHalf) this.awayBatterIndex++;
 					else this.homeBatterIndex++;
@@ -210,19 +241,48 @@ export class Game {
 
 				if (result.outcome === "IN_PLAY" && result.battedBall) {
 					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} hit the ball into play`);
+					this.updateBattingStat(hitter, 'atBats', 1);
 					// Build runners state from current bases
-					const runners: RunnersState = {
+					const initialRunners = {
 						first: this.basesOccupied.first,
 						second: this.basesOccupied.second,
 						third: this.basesOccupied.third,
-						outs: this.outs,
 					};
+					const scoreBeforePlay = this.isTopHalf ? this.awayScore : this.homeScore;
 
 					// Field the ball with the defensive team
-					const fieldingResult = simulateFielding(result.battedBall, fieldingTeam, runners);
+					const fieldingResult: FieldOutcome = simulateFielding(result.battedBall, this);
 
-					// Apply to game state (outs, runs, base advancements, batter placement)
-					this.applyPlay(fieldingResult, hitter);
+					const scoreAfterPlay = this.isTopHalf ? this.awayScore : this.homeScore;
+					const runsScored = scoreAfterPlay - scoreBeforePlay;
+
+					// Update based on play type
+					const playType = fieldingResult.playType;
+					if (['SINGLE', 'DOUBLE', 'TRIPLE'].includes(playType)) {
+						this.updateBattingStat(hitter, 'hits', 1);
+						if (runsScored > 0) {
+							this.updateBattingStat(hitter, 'rbis', runsScored);
+							// Attribute runs to runners who scored (simplified: assume third, or check bases)
+							if (initialRunners.third) this.updateBattingStat(initialRunners.third, 'runs', 1);
+						}
+					} else if (playType === 'HOME_RUN') {
+						this.updateBattingStat(hitter, 'hits', 1);
+						const totalRunsOnHR = runsScored;
+						this.updateBattingStat(hitter, 'runs', 1);
+						this.updateBattingStat(hitter, 'rbis', totalRunsOnHR);
+						// Attribute runs to previous runners
+						if (initialRunners.third) this.updateBattingStat(initialRunners.third, 'runs', 1);
+						if (initialRunners.second) this.updateBattingStat(initialRunners.second, 'runs', 1);
+						if (initialRunners.first) this.updateBattingStat(initialRunners.first, 'runs', 1);
+					} else if (playType === 'OUT') {
+						// Single out, update fielding
+						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 1, fieldingTeam);
+					} else if (playType === 'DOUBLE_PLAY') {
+						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 2, fieldingTeam);
+						// Could add assist to another fielder, but simplified
+					} else if (playType === 'TRIPLE_PLAY') {
+						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 3, fieldingTeam);
+					}
 
 					// Next batter
 					if (this.isTopHalf) this.awayBatterIndex++;
@@ -231,6 +291,14 @@ export class Game {
 
 				// continue to next at-bat while the half-inning hasn't ended
 				continue;
+			}
+
+			// Record inning scores at end of half
+			const runsThisHalf = (this.isTopHalf ? this.awayScore : this.homeScore) - runsAtStartOfHalf;
+			if (this.isTopHalf) {
+				this.boxScore.awayInningScores[this.currentInning - 1] = runsThisHalf;
+			} else {
+				this.boxScore.homeInningScores[this.currentInning - 1] = runsThisHalf;
 			}
 
 			// End of half (outs >= 3)
@@ -248,6 +316,7 @@ export class Game {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
+				console.log(`game finished in ${this.currentInning} innings`);
 				break;
 			}
 
@@ -266,11 +335,17 @@ export class Game {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
+				console.log(`game finished in ${this.currentInning} innings`);
 				break;
 			}
 
 			// Otherwise progress to the next half-inning (this also handles extra innings when tied)
 			this.nextHalf();
 		}
+
+		// Set winner in box score
+		this.boxScore.winner = this.winner;
+
+		return this.boxScore;
 	}
 }

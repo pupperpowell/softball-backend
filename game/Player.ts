@@ -1,8 +1,8 @@
 import type { FieldingPosition, Stats } from "./types";
 
 export class Player {
-    firstname: String = Math.random() > 0.5 ? "John" : "Jane";
-    lastname: String = Math.random() > 0.5 ? "Deer" : "Doe";
+    firstname: String = Math.floor(Math.random()*1000).toString();
+    lastname: String = Math.floor(Math.random()*1000).toString();
     
     stats: Stats = {
         contact: 0,
@@ -17,7 +17,7 @@ export class Player {
     public activePosition: FieldingPosition = "Bench";
     public primaryPosition: FieldingPosition = "Bench";
 
-    constructor(first?: string, last?: string, stats?: Stats, position?: FieldingPosition) {
+    constructor(first: string, last: string, stats?: Stats, position?: FieldingPosition) {
         if (first) this.firstname = first;
         if (last) this.lastname = last;
         if (stats) this.stats = stats;
@@ -28,10 +28,28 @@ export class Player {
      * toString
      */
     public toString(): string {
-        return `${this.firstname[0]}. ${this.lastname}`;
+        return `${this.firstname[0]}. ${this.lastname} (${this.activePosition})`;
     }
 
     public fullName(): string {
         return `${this.firstname} ${this.lastname}`;
+    }
+
+    isOutfielder() {
+        return [
+            "Left Field",
+            "Center Field",
+            "Right Field",
+        ].includes(this.activePosition);
+    }
+    isInfielder() {
+        return [
+            "First Base",
+            "Second Base",
+            "Third Base",
+            "Shortstop",
+            "Pitcher",
+            "Catcher"
+        ].includes(this.activePosition);
     }
 }
