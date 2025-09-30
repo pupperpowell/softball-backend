@@ -1,9 +1,10 @@
 import { test } from "bun:test";
-import { simulateAtBat } from "../game/simulateAtBat.ts";
-import { simulateFieldingWithRunners, type RunnersState, type PlayResult } from "../game/fielding.ts";
-import type { FieldingPosition } from "../game/types.ts";
-import { Player } from "../game/Player.ts";
-import { Team } from "../game/Team.ts";
+import { simulateAtBat } from "../../game/simulateAtBat.ts";
+import { isHit, simulateFielding } from "../../game/fielding.ts";
+import type { FieldingPosition, FieldOutcome, RunnersState } from "../../game/types.ts";
+import { Player } from "../../game/Player.ts";
+import { Team } from "../../game/Team.ts";
+import { Game } from "../../game/Game.ts";
 
 function makeBatter(contact: number, power: number): Player {
   return new Player(undefined, undefined, {
@@ -43,21 +44,19 @@ function makeFieldingTeam(fielding: number): Team {
       charisma: 0,
       growth: 0,
     });
-    player.position = pos;
+    player.activePosition = pos;
     team.players.push(player);
   }
   return team;
-}
-
-function isHit(result: string): boolean {
-  return ["SINGLE", "DOUBLE", "TRIPLE", "HOME_RUN"].includes(result);
 }
 
 function simulateBattingAverage(contact: number, power: number, trials: number): { hits: number; ab: number; walks: number; ba: number; obp: number } {
   const batter = makeBatter(contact, power);
   const pitcher = makePitcher(contact);
   const fieldingTeam = makeFieldingTeam(contact);
-  const emptyRunners: RunnersState = { first: undefined, second: undefined, third: undefined, outs: 0 };
+  const dummyAwayTeam = new Team("Away");
+  const game = new Game(fieldingTeam, dummyAwayTeam);
+  const emptyRunners: RunnersState = { };
 
   let hits = 0;
   let ab = 0;
@@ -72,8 +71,8 @@ function simulateBattingAverage(contact: number, power: number, trials: number):
     ab++; // STRIKEOUT and IN_PLAY count as AB
 
     if (atBat.outcome === "IN_PLAY" && atBat.battedBall) {
-      const play: PlayResult = simulateFieldingWithRunners(emptyRunners, atBat.battedBall, fieldingTeam);
-      if (isHit(play.field.result)) {
+      const play: FieldOutcome = simulateFielding(atBat.battedBall, game);
+      if (isHit(play.playType)) {
         hits++;
       }
     }

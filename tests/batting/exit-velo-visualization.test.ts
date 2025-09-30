@@ -1,5 +1,5 @@
 import { test } from "bun:test";
-import { calculateExitVelo } from "../game/batting.ts";
+import { calculateExitVelo } from "../../game/batting.ts";
 
 function simulateExitVeloStats(power: number, trials = 50000): { avg: number; min: number; max: number } {
   let total = 0;

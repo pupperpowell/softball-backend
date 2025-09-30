@@ -47,7 +47,7 @@ function generateTeam(name: string): Team {
     }
     for (let i = 0; i < 9; i++) {
         const player = generateSkilledPlayer(3);
-        player.position = positions[i]!;
+        player.activePosition = positions[i]!;
         team.players.push(player);
     }
     return team;

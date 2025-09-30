@@ -1,7 +1,7 @@
 import { test } from "bun:test";
-import { calculateAirTime } from "../game/fielding.ts";
-import { Player } from "../game/Player.ts";
-import type { BattedBall } from "../game/types.ts";
+import { calculateAirTime } from "../../game/fielding.ts";
+import { Player } from "../../game/Player.ts";
+import type { BattedBall } from "../../game/types.ts";
 
 function makeBall(velo: number, launch: number, attack = 0): BattedBall {
   return {

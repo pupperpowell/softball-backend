@@ -1,9 +1,9 @@
 import { test } from "bun:test";
-import { estimateDropZone } from "../game/fielding.ts";
-import { simulatePitch } from "../game/pitching.ts";
-import { calculateSwing, calculateHit } from "../game/batting.ts";
-import { Player } from "../game/Player.ts";
-import type { BattedBall, FieldingPosition } from "../game/types.ts";
+import { estimateDropZone } from "../../game/fielding.ts";
+import { simulatePitch } from "../../game/pitching.ts";
+import { calculateSwing, calculateHit } from "../../game/batting.ts";
+import { Player } from "../../game/Player.ts";
+import type { BattedBall, FieldingPosition } from "../../game/types.ts";
 
 const TRACK_BENCH_HITS = false; // bench hits are counted as foul balls
 

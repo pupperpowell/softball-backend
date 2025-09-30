@@ -53,7 +53,7 @@ function generateTeam(name: string): Team {
 	return team;
 }
 
-const numOfGames = 500
+const numOfGames = 10000
 
 test(`Simulate ${numOfGames} games and ensure average game length is below 10 innings`, () => {
 	let totalInnings = 0;
@@ -72,5 +72,5 @@ test(`Simulate ${numOfGames} games and ensure average game length is below 10 in
 		totalInnings += game.currentInning;
 	}
 
-	expect(totalInnings / numOfGames).toBeLessThanOrEqual(10);
+	expect(totalInnings / numOfGames).toBeLessThanOrEqual(9.25);
 });

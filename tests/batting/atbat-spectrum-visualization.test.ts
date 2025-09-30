@@ -1,8 +1,8 @@
 import { test } from "bun:test";
-import { calculateSwing, calculateHit } from "../game/batting.ts";
-import { simulatePitch } from "../game/pitching.ts";
-import { Player } from "../game/Player.ts";
-import type { Stats } from "../game/types.ts";
+import { calculateSwing, calculateHit } from "../../game/batting.ts";
+import { simulatePitch } from "../../game/pitching.ts";
+import { Player } from "../../game/Player.ts";
+import type { Stats } from "../../game/types.ts";
 
 function makeBatter(contact: number, power: number): Player {
   return new Player(undefined, undefined, {
