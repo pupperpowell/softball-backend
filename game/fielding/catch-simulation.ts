@@ -45,7 +45,7 @@ export function calculateCatchProbability(ball: BattedBall, fielder: Player, bal
     let depthBonus = 0;
     if (ballType === "FLY" || ballType === "LINE") {
       if (rangeFt < 250) { // shallow outfield
-        depthBonus = -0.15; // easier in shallow outfield
+        depthBonus = -0.15; // harder in shallow outfield
       } else if (rangeFt > 350) { // deep outfield
         depthBonus = -0.15; // harder in deep outfield
       } else {
@@ -69,9 +69,9 @@ export function calculateCatchProbability(ball: BattedBall, fielder: Player, bal
   if (ballType === "LINE") {
     p += fielder.stats.fielding * 0.005;
   } else if (ballType === "POP") {
-    p += fielder.stats.fielding * 0.030 + fielder.stats.running * 0.020;
+    p += fielder.stats.fielding * 0.10 + fielder.stats.running * 0.050;
   } else if (ballType === "FLY") {
-    p += fielder.stats.fielding * 0.015 + fielder.stats.running * 0.015;
+    p += fielder.stats.fielding * 0.07 + fielder.stats.running * 0.010;
   }
 
   debugLog(`Catch probability: ${p.toFixed(3)}`)
