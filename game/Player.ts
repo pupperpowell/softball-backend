@@ -17,7 +17,7 @@ export class Player {
     public activePosition: FieldingPosition = "Bench";
     public primaryPosition: FieldingPosition = "Bench";
 
-    constructor(first: string, last: string, stats?: Stats, position?: FieldingPosition) {
+    constructor(first?: string, last?: string, stats?: Stats, position?: FieldingPosition) {
         if (first) this.firstname = first;
         if (last) this.lastname = last;
         if (stats) this.stats = stats;

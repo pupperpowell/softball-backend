@@ -1,4 +1,4 @@
-import { normal, randomNormal, clamp } from "./math";
+import { normal, randomNormal, clamp } from "../utils/math";
 import type { Player } from "./Player";
 import type { ThrownPitch } from "./types";
 

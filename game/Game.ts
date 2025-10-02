@@ -6,6 +6,7 @@ import type { Team } from "./Team";
 import { BoxScore } from "./BoxScore.ts";
 import { simulateFielding } from "./fielding.ts";
 import type { GameState, RunnersState, PlayerBattingStats, PlayerPitchingStats, PlayerFieldingStats, FieldOutcome, AtBatResult } from "./types.ts";
+import { debugLog } from "../utils/debug.ts";
 
 // This class contains the state for each game.
 export class Game implements GameState {
@@ -44,6 +45,7 @@ export class Game implements GameState {
 		this.isTopHalf = !this.isTopHalf;
 		this.outs = 0;
 		this.clearBases();
+		debugLog(`[GAME DEBUG]: Bases cleared for ${this.isTopHalf ? 'top' : 'bottom'} of inning ${this.currentInning}, bases now: ${JSON.stringify(this.basesOccupied)}`);
 	}
 
 	// Add runs to the appropriate team's score
@@ -105,7 +107,7 @@ export class Game implements GameState {
 
 	// Base running methods
 	addRunner(player: Player, base: 1 | 2 | 3): void {
-		console.log(
+		debugLog(
 			`[BASE RUNNING]: Adding ${player.firstname} ${player.lastname} to base ${base}`,
 		);
 		if (base === 1) {
@@ -167,21 +169,16 @@ export class Game implements GameState {
 	}
 
 	simulate() { // should eventually return a BoxScore
-		const debug = false; // Enable/disable debug console.log statements
-
-		if (debug) console.log('[GAME SIMULATE]: Starting game simulation');
+		debugLog('[GAME SIMULATE]: Starting game simulation');
 
 		let runsAtStartOfHalf = 0;
 		let startingAwayScore = this.awayScore;
 		while (!this.isGameOver) {
-			// Record the starting score at the beginning of each half-inning
-			if (this.outs === 0) {
-				runsAtStartOfHalf = this.isTopHalf ? this.awayScore : this.homeScore;
-			}
 
 			if (this.outs < 3) {
 
-				if (debug) console.log(`[GAME SIMULATE]: Inning ${this.currentInning}, ${this.isTopHalf ? 'Top' : 'Bottom'}, Score: ${this.awayScore}-${this.homeScore}, Outs: ${this.outs}, Bases: ${(this.basesOccupied.first ? '1' : '-')}${(this.basesOccupied.second ? '2' : '-')}${(this.basesOccupied.third ? '3' : '-')}`);
+				debugLog(`[GAME DEBUG]: About to log at-bat state, current bases: ${(this.basesOccupied.first ? '1' : '-')}${(this.basesOccupied.second ? '2' : '-')}${(this.basesOccupied.third ? '3' : '-')}`);
+				debugLog(`[GAME SIMULATE]: Inning ${this.currentInning}, ${this.isTopHalf ? 'Top' : 'Bottom'}, Score: ${this.awayScore}-${this.homeScore}, Outs: ${this.outs}`);
 
 				// get current hitter in the lineup
 				// NOTE: getPlayers() is TODO in Team.ts; keeping call for now.
@@ -198,7 +195,7 @@ export class Game implements GameState {
 					throw new Error("No pitcher found!")
 				}
 
-				if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
+				debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
 
 				// simulate the at-bat
 				const result: AtBatResult = simulateAtBat(hitter, pitcher);
@@ -210,7 +207,7 @@ export class Game implements GameState {
 
 				// Resolve outcome
 				if (result.outcome === "WALK") {
-					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} walked`);
+					debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} walked`);
 					this.updateBattingStat(hitter, 'walks', 1);
 					this.updatePitchingStat(pitcher, 'walks', 1);
 					const runsBeforeWalk = this.isTopHalf ? this.awayScore : this.homeScore;
@@ -229,7 +226,7 @@ export class Game implements GameState {
 				}
 
 				if (result.outcome === "STRIKEOUT") {
-					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} struck out`);
+					debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} struck out`);
 					this.updateBattingStat(hitter, 'atBats', 1);
 					this.updateBattingStat(hitter, 'strikeouts', 1);
 					this.updatePitchingStat(pitcher, 'strikeouts', 1);
@@ -240,7 +237,7 @@ export class Game implements GameState {
 				}
 
 				if (result.outcome === "IN_PLAY" && result.battedBall) {
-					if (debug) console.log(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} hit the ball into play`);
+					debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} hit the ball into play`);
 					this.updateBattingStat(hitter, 'atBats', 1);
 					// Build runners state from current bases
 					const initialRunners = {
@@ -253,8 +250,14 @@ export class Game implements GameState {
 					// Field the ball with the defensive team
 					const fieldingResult: FieldOutcome = simulateFielding(result.battedBall, this);
 
+					this.basesOccupied = fieldingResult.updatedBases;
+
+					debugLog(`[GAME DEBUG]: Fielding result: playType="${fieldingResult.playType}"`);
+
 					const scoreAfterPlay = this.isTopHalf ? this.awayScore : this.homeScore;
 					const runsScored = scoreAfterPlay - scoreBeforePlay;
+
+					debugLog(`[GAME DEBUG]: Runs scored on play: ${runsScored}, playType="${fieldingResult.playType}"`);
 
 					// Update based on play type
 					const playType = fieldingResult.playType;
@@ -301,6 +304,8 @@ export class Game implements GameState {
 				this.boxScore.homeInningScores[this.currentInning - 1] = runsThisHalf;
 			}
 
+			debugLog(`[GAME DEBUG]: Ending half-inning (${this.isTopHalf ? 'top' : 'bottom'} ${this.currentInning}), outs=${this.outs}, bases before nextHalf: ${JSON.stringify(this.basesOccupied)}`);
+
 			// End of half (outs >= 3)
 			// If we've just completed the top of the 9th (or later) and the away team was trailing and failed to score, end the game early.
 			if (
@@ -316,7 +321,7 @@ export class Game implements GameState {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
-				console.log(`game finished in ${this.currentInning} innings`);
+				debugLog(`game finished in ${this.currentInning} innings`);
 				break;
 			}
 
@@ -335,7 +340,7 @@ export class Game implements GameState {
 				const finalScoreString = (this.homeScore > this.awayScore)
 					? `${this.homeScore}—${this.awayScore}`
 					: `${this.awayScore}—${this.homeScore}`;
-				console.log(`game finished in ${this.currentInning} innings`);
+				debugLog(`game finished in ${this.currentInning} innings`);
 				break;
 			}
 

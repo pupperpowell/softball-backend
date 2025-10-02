@@ -1,4 +1,4 @@
-import { clamp, normal, randomNormal } from "./math";
+import { clamp, normal, randomNormal } from "../utils/math";
 import type { BattedBall, ThrownPitch } from "./types";
 import { Player } from "./Player";
 
@@ -8,12 +8,12 @@ import { Player } from "./Player";
 const LAUNCH_MIN = -135;
 const LAUNCH_MAX = 135;
 const LAUNCH_SWEET_MEAN = 20; // center of sweet spot (8–32°)
-const LAUNCH_SWEET_STDEV_MIN = 8;   // tighter at high skill
-const LAUNCH_SWEET_STDEV_MAX = 35;  // looser at low skill
-const LAUNCH_SWEET_WEIGHT_MIN = 0.20; // weight of sweet-spot mode at skill=0
-const LAUNCH_SWEET_WEIGHT_MAX = 0.70; // weight at skill=10
+const LAUNCH_SWEET_STDEV_MIN = 14;   // tighter at high skill
+const LAUNCH_SWEET_STDEV_MAX = 30;  // looser at low skill
+const LAUNCH_SWEET_WEIGHT_MIN = 0.50; // weight of sweet-spot mode at skill=0
+const LAUNCH_SWEET_WEIGHT_MAX = 0.85; // weight at skill=10
 // Background randomness for low-skill contact
-const LAUNCH_BACKGROUND_STDEV = 90;
+const LAUNCH_BACKGROUND_STDEV = 60;
 
 // Attack/horizontal spray angle
 const ATTACK_MIN = -80;
@@ -115,7 +115,7 @@ export function calculateHit(batter: Player, pitch: ThrownPitch): BattedBall | n
         const uniform = LAUNCH_MIN + Math.random() * (LAUNCH_MAX - LAUNCH_MIN);
         const broad = normal(LAUNCH_SWEET_MEAN, LAUNCH_BACKGROUND_STDEV);
         // Slightly bias toward broad normal with skill, but keep mostly uniform at low skill
-        const t = focus * 0.5; // cap influence so randomness remains
+        const t = focus * 0.7; // cap influence so randomness remains
         launch = uniform * (1 - t) + broad * t;
     }
     launch = clamp(launch, LAUNCH_MIN, LAUNCH_MAX);

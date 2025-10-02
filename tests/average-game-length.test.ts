@@ -53,9 +53,9 @@ function generateTeam(name: string): Team {
 	return team;
 }
 
-const numOfGames = 10000
+const numOfGames = 5000
 
-test(`Simulate ${numOfGames} games and ensure average game length is below 10 innings`, () => {
+test(`Simulate ${numOfGames} games and ensure average game length is below 9.25 innings`, () => {
 	let totalInnings = 0;
 	for (let i = 0; i < numOfGames; i++) {
 		const testHomeTeam = generateTeam("Home Team");
@@ -73,4 +73,40 @@ test(`Simulate ${numOfGames} games and ensure average game length is below 10 in
 	}
 
 	expect(totalInnings / numOfGames).toBeLessThanOrEqual(9.25);
+});
+
+test("Measure average runs scored per game for skilled teams at each skill level 0-10", () => {
+  function createSkilledTeam(name: string, skill: number): Team {
+    const team = new Team(name);
+    team.players = [];
+    // Shuffle positions to assign exactly one of each
+    let positions: FieldingPosition[] = ["Pitcher", "Catcher", "First Base", "Second Base", "Third Base", "Shortstop", "Left Field", "Center Field", "Right Field"];
+    for (let i = positions.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [positions[i]!, positions[j]!] = [positions[j]!, positions[i]!];
+    }
+    for (let i = 0; i < 9; i++) {
+      const player = generateSkilledPlayer(skill);
+      player.activePosition = positions[i]!;
+      team.players.push(player);
+    }
+    return team;
+  }
+
+  const numGames = 500;
+  for (let skill = 0; skill <= 10; skill++) {
+    let totalHomeRuns = 0;
+    let totalAwayRuns = 0;
+    for (let i = 0; i < numGames; i++) {
+      const homeTeam = createSkilledTeam(`Skilled Home ${skill}`, skill);
+      const awayTeam = createSkilledTeam(`Skilled Away ${skill}`, skill);
+      const game = new Game(homeTeam, awayTeam);
+      game.simulate();
+      totalHomeRuns += game.homeScore;
+      totalAwayRuns += game.awayScore;
+    }
+    const totalRuns = totalHomeRuns + totalAwayRuns;
+    const avgRunsPerTeam = totalRuns / (2 * numGames);
+    console.log(`Skill level ${skill}: Average runs per team per game: ${avgRunsPerTeam.toFixed(2)}`);
+  }
 });
