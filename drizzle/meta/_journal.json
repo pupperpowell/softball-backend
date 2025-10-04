@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1759555448252,
+      "tag": "0000_wild_peter_quill",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1759555820743,
+      "tag": "0001_outgoing_susan_delgado",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1759557669929,
+      "tag": "0002_loving_wild_child",
+      "breakpoints": true
+    }
+  ]
+}

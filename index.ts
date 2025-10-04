@@ -1,3 +1,10 @@
+import { db } from "./db/db";
+import { sql } from "drizzle-orm";
+
+const query = sql`select "hello world" as text`;
+const result = db.get<{ text: string }>(query);
+console.log(result);
+
 /**
  * Bun WebSocket server on ws://localhost:2004/ws
  * - Every 2 seconds, broadcasts a debug message to all connected clients
@@ -42,14 +49,8 @@ const server = Bun.serve({
       // Subscribe this socket to the &#39;debug&#39; topic so it receives broadcasts
       ws.subscribe("debug");
 
-      // Optional welcome message
-      ws.send(
-        JSON.stringify({
-          type: "welcome",
-          message: "Connected to debug stream",
-          intervalMs: 2000,
-        }),
-      );
+      // Initial message for new connection
+      ws.send("No currently scheduled games.");
     },
 
     // Echo basic messages / handle simple commands (optional)
