@@ -1,5 +1,5 @@
 import { test } from "bun:test";
-import { calculateSwing } from "../game/batting.ts";
+import { calculateSwing } from "../../game/batting.ts";
 
 function simulateRate(contactScore: number, isStrike: boolean, trials = 50000): number {
   let swings = 0;

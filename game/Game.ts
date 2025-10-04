@@ -7,6 +7,8 @@ import { BoxScore } from "./BoxScore.ts";
 import { simulateFielding } from "./fielding.ts";
 import type { GameState, RunnersState, PlayerBattingStats, PlayerPitchingStats, PlayerFieldingStats, FieldOutcome, AtBatResult } from "./types.ts";
 import { debugLog } from "../utils/debug.ts";
+import { EventLog, HalfInning } from "./events/index.ts";
+import type { GameStartData, GameEndData, InningStartData, InningEndData, AtBatStartData, AtBatEndData, ContactMadeData, BallInPlayData, HitRecordedData, OutRecordedData } from "./events/types.ts";
 
 // This class contains the state for each game.
 export class Game implements GameState {
@@ -23,18 +25,24 @@ export class Game implements GameState {
 		first?: Player;
 		second?: Player;
 		third?: Player;
-	};
+	} = {};
 	boxScore = new BoxScore();
 	isGameOver = false;
 	winner?: Team;
+	eventLog: EventLog;
+	private eventTimestamp = 0;
 
-	constructor(homeTeam: Team, awayTeam: Team) {
+	constructor(homeTeam: Team, awayTeam: Team, enableNarration?: boolean) {
 		if (homeTeam === awayTeam) {
 			throw new Error("A team cannot play against itself.");
 		}
 		this.homeTeam = homeTeam;
 		this.awayTeam = awayTeam;
-	this.basesOccupied = {};
+		this.eventLog = new EventLog(enableNarration);
+	}
+
+	getEventLog(): EventLog {
+		return this.eventLog;
 	}
 
 	// Progress the inning, or go to the next one
@@ -171,9 +179,30 @@ export class Game implements GameState {
 	simulate() { // should eventually return a BoxScore
 		debugLog('[GAME SIMULATE]: Starting game simulation');
 
+		// Log game start event
+		const gameStartData: GameStartData = {
+			homeTeam: String(this.homeTeam.name),
+			awayTeam: String(this.awayTeam.name),
+			date: new Date().toISOString(),
+		};
+		this.eventLog.addEvent('gameStart', this.currentInning, HalfInning.Top, gameStartData);
+		this.eventTimestamp += 100;
+
 		let runsAtStartOfHalf = 0;
 		let startingAwayScore = this.awayScore;
 		while (!this.isGameOver) {
+
+			// Log inning start at the beginning of each half-inning (when outs == 0)
+			if (this.outs === 0) {
+				const inningStartData: InningStartData = {
+					inning: this.currentInning,
+					half: this.isTopHalf ? HalfInning.Top : HalfInning.Bottom,
+					battingTeam: String(this.getBattingTeam().name),
+					pitchingTeam: String(this.getFieldingTeam().name),
+				};
+				this.eventLog.addEvent('inningStart', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, inningStartData);
+				this.eventTimestamp += 100;
+			}
 
 			if (this.outs < 3) {
 
@@ -196,6 +225,21 @@ export class Game implements GameState {
 				}
 
 				debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} (${this.isTopHalf ? this.awayTeam.name : this.homeTeam.name}) vs ${pitcher.firstname} ${pitcher.lastname} (${fieldingTeam.name})`);
+
+				// Log at-bat start
+				const runnersOnBase: number[] = [];
+				if (this.basesOccupied.first) runnersOnBase.push(1);
+				if (this.basesOccupied.second) runnersOnBase.push(2);
+				if (this.basesOccupied.third) runnersOnBase.push(3);
+
+				const atBatStartData: AtBatStartData = {
+					batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+					pitcherId: `${pitcher.firstname}-${pitcher.lastname}`.toLowerCase() as any,
+					count: { balls: 0, strikes: 0 },
+					runnersOnBase,
+				};
+				this.eventLog.addEvent('atBatStart', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, atBatStartData);
+				this.eventTimestamp += 100;
 
 				// simulate the at-bat
 				const result: AtBatResult = simulateAtBat(hitter, pitcher);
@@ -220,6 +264,15 @@ export class Game implements GameState {
 							this.updateBattingStat(this.basesOccupied.third!, 'runs', 1);
 						}
 					}
+
+					// Log at-bat end
+					const atBatEndData: AtBatEndData = {
+						outcome: 'walk',
+						batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+					};
+					this.eventLog.addEvent('atBatEnd', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, atBatEndData);
+					this.eventTimestamp += 100;
+
 					if (this.isTopHalf) this.awayBatterIndex++;
 					else this.homeBatterIndex++;
 					continue;
@@ -231,6 +284,23 @@ export class Game implements GameState {
 					this.updateBattingStat(hitter, 'strikeouts', 1);
 					this.updatePitchingStat(pitcher, 'strikeouts', 1);
 					this.outs++;
+
+					// Log out recorded for strikeout
+					const outRecordedData: OutRecordedData = {
+						playerId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+						outType: 'strikeout',
+					};
+					this.eventLog.addEvent('outRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, outRecordedData);
+					this.eventTimestamp += 100;
+
+					// Log at-bat end
+					const atBatEndData: AtBatEndData = {
+						outcome: 'strikeout',
+						batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+					};
+					this.eventLog.addEvent('atBatEnd', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, atBatEndData);
+					this.eventTimestamp += 100;
+
 					if (this.isTopHalf) this.awayBatterIndex++;
 					else this.homeBatterIndex++;
 					continue;
@@ -239,6 +309,41 @@ export class Game implements GameState {
 				if (result.outcome === "IN_PLAY" && result.battedBall) {
 					debugLog(`[GAME SIMULATE]: ${hitter.firstname} ${hitter.lastname} hit the ball into play`);
 					this.updateBattingStat(hitter, 'atBats', 1);
+
+					// Log contact made
+					// Determine hit type from launch angle
+					let hitType: 'grounder' | 'lineDrive' | 'flyBall' | 'popup' = 'lineDrive';
+					if (result.battedBall.launch < 10) {
+						hitType = 'grounder';
+					} else if (result.battedBall.launch < 25) {
+						hitType = 'lineDrive';
+					} else if (result.battedBall.launch < 50) {
+						hitType = 'flyBall';
+					} else {
+						hitType = 'popup';
+					}
+
+					const contactMadeData: ContactMadeData = {
+						batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+						exitVelocity: result.battedBall.velo,
+						launchAngle: result.battedBall.launch,
+						azimuth: result.battedBall.attack,
+						projectedDistance: 0, // Not available in BattedBall type
+						hitType,
+					};
+					this.eventLog.addEvent('contactMade', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, contactMadeData);
+					this.eventTimestamp += 100;
+
+					// Log ball in play
+					const ballInPlayData: BallInPlayData = {
+						batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+						speed: result.battedBall.velo,
+						angle: result.battedBall.launch,
+						direction: result.battedBall.attack > 0 ? 'right field' : 'left field',
+					};
+					this.eventLog.addEvent('ballInPlay', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, ballInPlayData);
+					this.eventTimestamp += 100;
+
 					// Build runners state from current bases
 					const initialRunners = {
 						first: this.basesOccupied.first,
@@ -268,6 +373,16 @@ export class Game implements GameState {
 							// Attribute runs to runners who scored (simplified: assume third, or check bases)
 							if (initialRunners.third) this.updateBattingStat(initialRunners.third, 'runs', 1);
 						}
+
+						// Log hit recorded
+						const hitRecordedData: HitRecordedData = {
+							batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+							hitType: playType.toLowerCase() as 'single' | 'double' | 'triple',
+							rbi: runsScored,
+							runnersAdvanced: [],
+						};
+						this.eventLog.addEvent('hitRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, hitRecordedData);
+						this.eventTimestamp += 100;
 					} else if (playType === 'HOME_RUN') {
 						this.updateBattingStat(hitter, 'hits', 1);
 						const totalRunsOnHR = runsScored;
@@ -277,15 +392,60 @@ export class Game implements GameState {
 						if (initialRunners.third) this.updateBattingStat(initialRunners.third, 'runs', 1);
 						if (initialRunners.second) this.updateBattingStat(initialRunners.second, 'runs', 1);
 						if (initialRunners.first) this.updateBattingStat(initialRunners.first, 'runs', 1);
+
+						// Log hit recorded for home run
+						const hitRecordedData: HitRecordedData = {
+							batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+							hitType: 'insideTheParkHomeRun',
+							rbi: totalRunsOnHR,
+							runnersAdvanced: [],
+						};
+						this.eventLog.addEvent('hitRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, hitRecordedData);
+						this.eventTimestamp += 100;
 					} else if (playType === 'OUT') {
 						// Single out, update fielding
 						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 1, fieldingTeam);
+
+						// Log out recorded
+						const outRecordedData: OutRecordedData = {
+							playerId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+							outType: hitType === 'flyBall' || hitType === 'popup' ? 'flyout' : 'groundout',
+							fielderId: `${fieldingResult.primary_fielder.firstname}-${fieldingResult.primary_fielder.lastname}`.toLowerCase() as any,
+						};
+						this.eventLog.addEvent('outRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, outRecordedData);
+						this.eventTimestamp += 100;
 					} else if (playType === 'DOUBLE_PLAY') {
 						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 2, fieldingTeam);
 						// Could add assist to another fielder, but simplified
+
+						// Log out recorded for double play
+						const outRecordedData: OutRecordedData = {
+							playerId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+							outType: 'groundout',
+							fielderId: `${fieldingResult.primary_fielder.firstname}-${fieldingResult.primary_fielder.lastname}`.toLowerCase() as any,
+						};
+						this.eventLog.addEvent('outRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, outRecordedData);
+						this.eventTimestamp += 100;
 					} else if (playType === 'TRIPLE_PLAY') {
 						this.updateFieldingStat(fieldingResult.primary_fielder, 'putouts', 3, fieldingTeam);
+
+						// Log out recorded for triple play
+						const outRecordedData: OutRecordedData = {
+							playerId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+							outType: 'groundout',
+							fielderId: `${fieldingResult.primary_fielder.firstname}-${fieldingResult.primary_fielder.lastname}`.toLowerCase() as any,
+						};
+						this.eventLog.addEvent('outRecorded', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, outRecordedData);
+						this.eventTimestamp += 100;
 					}
+
+					// Log at-bat end
+					const atBatEndData: AtBatEndData = {
+						outcome: ['SINGLE', 'DOUBLE', 'TRIPLE', 'HOME_RUN'].includes(playType) ? 'hit' : 'out',
+						batterId: `${hitter.firstname}-${hitter.lastname}`.toLowerCase() as any,
+					};
+					this.eventLog.addEvent('atBatEnd', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, atBatEndData);
+					this.eventTimestamp += 100;
 
 					// Next batter
 					if (this.isTopHalf) this.awayBatterIndex++;
@@ -303,6 +463,14 @@ export class Game implements GameState {
 			} else {
 				this.boxScore.homeInningScores[this.currentInning - 1] = runsThisHalf;
 			}
+
+			// Log inning end
+			const inningEndData: InningEndData = {
+				runsScored: runsThisHalf,
+				scoreUpdate: { home: this.homeScore, away: this.awayScore },
+			};
+			this.eventLog.addEvent('inningEnd', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, inningEndData);
+			this.eventTimestamp += 100;
 
 			debugLog(`[GAME DEBUG]: Ending half-inning (${this.isTopHalf ? 'top' : 'bottom'} ${this.currentInning}), outs=${this.outs}, bases before nextHalf: ${JSON.stringify(this.basesOccupied)}`);
 
@@ -346,7 +514,18 @@ export class Game implements GameState {
 
 			// Otherwise progress to the next half-inning (this also handles extra innings when tied)
 			this.nextHalf();
+			runsAtStartOfHalf = this.isTopHalf ? this.awayScore : this.homeScore;
 		}
+
+		// Log game end
+		const gameEndData: GameEndData = {
+			homeScore: this.homeScore,
+			awayScore: this.awayScore,
+			winner: this.homeScore > this.awayScore ? 'home' : this.homeScore < this.awayScore ? 'away' : 'tie',
+			duration: Math.floor(this.eventTimestamp / 60000), // Convert to minutes
+		};
+		this.eventLog.addEvent('gameEnd', this.currentInning, this.isTopHalf ? HalfInning.Top : HalfInning.Bottom, gameEndData);
+		this.eventTimestamp += 100;
 
 		// Set winner in box score
 		this.boxScore.winner = this.winner;
